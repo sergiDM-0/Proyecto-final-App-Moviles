@@ -14,7 +14,7 @@ import { usePsychAudio } from '@/hooks/use-psych-audio';
 const EXAM_DURATION_SEC = 25;
 
 function getProportionalLaneHalfWidth(canvasWidth: number): number {
-  return Math.max(22, Math.min(32, Math.round(canvasWidth * 0.042)));
+  return Math.max(34, Math.min(52, Math.round(canvasWidth * 0.068)));
 }
 
 function getLeftLaneCenterX(
@@ -296,9 +296,9 @@ export default function LatheBimanualScreen() {
 
   const halfCanvasWidth = canvasSize.width / 2;
   const laneHalfWidth = getProportionalLaneHalfWidth(canvasSize.width);
-  // Joysticks proporcionales al ancho de la carretera (más pequeños: ~44% del semiancho del carril)
-  const joystickOuterRadius = Math.max(11, Math.round(laneHalfWidth * 0.44));
-  const joystickInnerRadius = Math.max(4, Math.round(joystickOuterRadius * 0.36));
+  // Joysticks proporcionales y cómodos dentro de la carretera ampliada (~36% del semiancho del carril)
+  const joystickOuterRadius = Math.max(12, Math.round(laneHalfWidth * 0.36));
+  const joystickInnerRadius = Math.max(4, Math.round(joystickOuterRadius * 0.35));
 
   const leftPanGesture = Gesture.Pan()
     .runOnJS(true)

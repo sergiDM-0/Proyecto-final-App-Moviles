@@ -43,8 +43,8 @@ const STEERING_WHEEL_RADIUS = 54;
 // Visor panorámico horizontal 16:9 optimizado para pantalla de celular en horizontal
 const VIEW3D_W = 960;
 const VIEW3D_H = 440;
-const HORIZON_Y = 136;
-const FOCAL_LEN = 390;
+const HORIZON_Y = 134;
+const FOCAL_LEN = 395;
 
 export type ManualGear = 'R' | 'N' | '1' | '2' | '3' | '4' | '5';
 
@@ -63,10 +63,10 @@ export const GEAR_SPECS: Record<ManualGear, GearSpec> = {
   R: {
     gear: 'R',
     label: 'REVERSA (R)',
-    shortDesc: 'Marcha atrás — Presione ACELERADOR para retroceder',
-    maxSpeedPx: -88,
-    maxKmh: 24,
-    accelFactor: 1.15,
+    shortDesc: 'Marcha atrás suave — Presione ACELERADOR para retroceder sin tirones',
+    maxSpeedPx: -27,
+    maxKmh: 13,
+    accelFactor: 0.72,
     slotX: 18,
     slotY: 22,
   },
@@ -83,50 +83,50 @@ export const GEAR_SPECS: Record<ManualGear, GearSpec> = {
   '1': {
     gear: '1',
     label: '1ª MARCHA',
-    shortDesc: 'Arranque y maniobra de precisión (0-22 km/h)',
-    maxSpeedPx: 78,
-    maxKmh: 22,
-    accelFactor: 1.38,
+    shortDesc: 'Arranque suave y maniobra fina (0-14 km/h)',
+    maxSpeedPx: 28,
+    maxKmh: 15,
+    accelFactor: 0.78,
     slotX: 18,
     slotY: 78,
   },
   '2': {
     gear: '2',
     label: '2ª MARCHA',
-    shortDesc: 'Giro en circuito y pista urbana (0-38 km/h)',
-    maxSpeedPx: 134,
-    maxKmh: 38,
-    accelFactor: 1.12,
+    shortDesc: 'Giro controlado en pista urbana (0-26 km/h)',
+    maxSpeedPx: 47,
+    maxKmh: 29,
+    accelFactor: 0.68,
     slotX: 39,
     slotY: 22,
   },
   '3': {
     gear: '3',
     label: '3ª MARCHA',
-    shortDesc: 'Circulación media en avenida (0-56 km/h)',
-    maxSpeedPx: 196,
-    maxKmh: 56,
-    accelFactor: 0.9,
+    shortDesc: 'Circulación media fluida (0-40 km/h)',
+    maxSpeedPx: 70,
+    maxKmh: 45,
+    accelFactor: 0.58,
     slotX: 39,
     slotY: 78,
   },
   '4': {
     gear: '4',
     label: '4ª MARCHA',
-    shortDesc: 'Crucero rápido en recta (0-78 km/h)',
-    maxSpeedPx: 268,
-    maxKmh: 78,
-    accelFactor: 0.74,
+    shortDesc: 'Crucero en avenida (0-56 km/h)',
+    maxSpeedPx: 94,
+    maxKmh: 63,
+    accelFactor: 0.48,
     slotX: 61,
     slotY: 22,
   },
   '5': {
     gear: '5',
     label: '5ª MARCHA',
-    shortDesc: 'Velocidad máxima de pista (0-100 km/h)',
-    maxSpeedPx: 340,
-    maxKmh: 100,
-    accelFactor: 0.6,
+    shortDesc: 'Velocidad alta de pista (0-75 km/h)',
+    maxSpeedPx: 120,
+    maxKmh: 80,
+    accelFactor: 0.4,
     slotX: 61,
     slotY: 78,
   },
@@ -157,6 +157,29 @@ interface FloorArrow {
   angleDeg: number;
 }
 
+interface ParkedCar3D {
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+  bodyColor: string;
+  sideColor: string;
+  roofColor: string;
+}
+
+interface Building3D {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+  d: number;
+  h: number;
+  frontColor: string;
+  sideColor: string;
+  topColor: string;
+  label?: string;
+}
+
 interface ParkingZone {
   x: number;
   y: number;
@@ -175,23 +198,119 @@ interface ScenarioConfig {
   parkingZone: ParkingZone;
   cones: ConePoint[];
   arrows: FloorArrow[];
+  parkedCars: ParkedCar3D[];
 }
+
+// Edificios, separadores viales e infraestructura 3D real proyectada en el mundo
+const WORLD_BUILDINGS_3D: Building3D[] = [
+  // Edificio Central AutoTest al norte de las bahías
+  {
+    x: 430,
+    y: 12,
+    z: 0,
+    w: 310,
+    d: 55,
+    h: 95,
+    frontColor: '#1E293B',
+    sideColor: '#0F172A',
+    topColor: '#334155',
+    label: 'CENTRO OFICIAL • AUTOTEST 3D',
+  },
+  // Franja roja superior del edificio central
+  {
+    x: 424,
+    y: 10,
+    z: 78,
+    w: 322,
+    d: 60,
+    h: 22,
+    frontColor: '#DC2626',
+    sideColor: '#991B1B',
+    topColor: '#EF4444',
+  },
+  // Torre de Control Vial (Izquierda Norte)
+  {
+    x: 150,
+    y: 10,
+    z: 0,
+    w: 150,
+    d: 58,
+    h: 145,
+    frontColor: '#64748B',
+    sideColor: '#475569',
+    topColor: '#94A3B8',
+  },
+  // Edificio Corporativo (Derecha Norte)
+  {
+    x: 840,
+    y: 10,
+    z: 0,
+    w: 185,
+    d: 58,
+    h: 135,
+    frontColor: '#475569',
+    sideColor: '#334155',
+    topColor: '#64748B',
+  },
+  // Pórtico Vial 3D sobre la pista principal (Columna Izquierda, Columna Derecha y Travesaño Superior)
+  {
+    x: 205,
+    y: 445,
+    z: 0,
+    w: 14,
+    d: 14,
+    h: 108,
+    frontColor: '#94A3B8',
+    sideColor: '#64748B',
+    topColor: '#CBD5E1',
+  },
+  {
+    x: 785,
+    y: 445,
+    z: 0,
+    w: 14,
+    d: 14,
+    h: 108,
+    frontColor: '#94A3B8',
+    sideColor: '#64748B',
+    topColor: '#CBD5E1',
+  },
+  {
+    x: 200,
+    y: 442,
+    z: 92,
+    w: 604,
+    d: 20,
+    h: 24,
+    frontColor: '#0284C7',
+    sideColor: '#0369A1',
+    topColor: '#38BDF8',
+    label: 'ZONA DE MANIOBRAS Y PARQUEO [P]',
+  },
+  // Islas separadoras viales 3D con relieve en la pista
+  {
+    x: 880,
+    y: 230,
+    z: 0,
+    w: 85,
+    d: 360,
+    h: 7,
+    frontColor: '#15803D',
+    sideColor: '#CBD5E1',
+    topColor: '#16A34A',
+  },
+];
 
 // Árboles 3D volumétricos distribuidos alrededor del gran complejo vial (1200 x 920)
 const WORLD_TREES: TreePoint[] = [
-  // Bosque perimetral Norte
-  { x: 90, y: 28, height: 85, canopyDark: '#14532D', canopyMid: '#15803D', canopyLight: '#4ADE80' },
-  { x: 220, y: 24, height: 92, canopyDark: '#064E3B', canopyMid: '#059669', canopyLight: '#34D399' },
-  { x: 360, y: 26, height: 78, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#86EFAC' },
-  { x: 510, y: 22, height: 96, canopyDark: '#78350F', canopyMid: '#D97706', canopyLight: '#FBBF24' },
-  { x: 660, y: 25, height: 88, canopyDark: '#14532D', canopyMid: '#15803D', canopyLight: '#4ADE80' },
-  { x: 810, y: 24, height: 90, canopyDark: '#064E3B', canopyMid: '#059669', canopyLight: '#6EE7B7' },
-  { x: 960, y: 28, height: 84, canopyDark: '#7C2D12', canopyMid: '#EA580C', canopyLight: '#FB923C' },
-  { x: 1100, y: 30, height: 92, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#4ADE80' },
+  { x: 85, y: 32, height: 88, canopyDark: '#14532D', canopyMid: '#15803D', canopyLight: '#4ADE80' },
+  { x: 355, y: 28, height: 82, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#86EFAC' },
+  { x: 785, y: 28, height: 92, canopyDark: '#064E3B', canopyMid: '#059669', canopyLight: '#6EE7B7' },
+  { x: 1085, y: 32, height: 94, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#4ADE80' },
   // Avenida Izquierda
-  { x: 35, y: 150, height: 82, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#4ADE80' },
+  { x: 35, y: 150, height: 84, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#4ADE80' },
   { x: 32, y: 310, height: 90, canopyDark: '#064E3B', canopyMid: '#059669', canopyLight: '#34D399' },
-  { x: 36, y: 470, height: 80, canopyDark: '#78350F', canopyMid: '#CA8A04', canopyLight: '#FACC15' },
+  { x: 36, y: 470, height: 82, canopyDark: '#78350F', canopyMid: '#CA8A04', canopyLight: '#FACC15' },
   { x: 34, y: 630, height: 88, canopyDark: '#14532D', canopyMid: '#15803D', canopyLight: '#86EFAC' },
   { x: 38, y: 790, height: 84, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#4ADE80' },
   // Avenida Derecha
@@ -206,48 +325,67 @@ const WORLD_TREES: TreePoint[] = [
   { x: 590, y: 890, height: 92, canopyDark: '#78350F', canopyMid: '#D97706', canopyLight: '#FBBF24' },
   { x: 800, y: 886, height: 86, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#86EFAC' },
   { x: 1010, y: 884, height: 88, canopyDark: '#14532D', canopyMid: '#15803D', canopyLight: '#4ADE80' },
-  // Islas ecológicas internas del circuito
-  { x: 920, y: 240, height: 76, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#4ADE80' },
-  { x: 920, y: 560, height: 80, canopyDark: '#064E3B', canopyMid: '#059669', canopyLight: '#6EE7B7' },
+  // Islas ecológicas internas
+  { x: 922, y: 295, height: 78, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#4ADE80' },
+  { x: 922, y: 515, height: 82, canopyDark: '#064E3B', canopyMid: '#059669', canopyLight: '#6EE7B7' },
 ];
 
 // Postes de alumbrado vial 3D a lo largo de la pista
 const WORLD_LAMPS: LampPoint[] = [
-  { x: 140, y: 85 },
-  { x: 420, y: 85 },
-  { x: 700, y: 85 },
-  { x: 980, y: 85 },
-  { x: 95, y: 380 },
-  { x: 95, y: 680 },
-  { x: 1095, y: 380 },
-  { x: 1095, y: 680 },
+  { x: 140, y: 88 },
+  { x: 410, y: 88 },
+  { x: 740, y: 88 },
+  { x: 1020, y: 88 },
+  { x: 95, y: 360 },
+  { x: 95, y: 660 },
+  { x: 1095, y: 360 },
+  { x: 1095, y: 660 },
 ];
 
-// Los 3 niveles de conducción dentro del nuevo entorno amplio (1200 x 920)
+// Los 3 niveles de conducción con vehículos 3D estacionados de referencia
 const SCENARIOS: ScenarioConfig[] = [
   {
     id: 'bay',
     title: 'Nivel 1: Circuito Vial y Parqueo en Bahía [P] (90°)',
     shortLabel: '1. PARQUEO [P] 90°',
-    startX: 240,
+    startX: 250,
     startY: 730,
-    startAngleDeg: -42,
+    startAngleDeg: -45,
     parkingZone: {
       x: 520,
       y: 120,
-      w: 110,
-      h: 140,
+      w: 112,
+      h: 142,
       targetAngleDeg: -90,
     },
+    parkedCars: [
+      // Vehículos 3D estacionados en las bahías vecinas izquierda y derecha
+      {
+        x: 385,
+        y: 128,
+        w: 56,
+        d: 108,
+        bodyColor: '#DC2626',
+        sideColor: '#991B1B',
+        roofColor: '#F87171',
+      },
+      {
+        x: 705,
+        y: 128,
+        w: 56,
+        d: 108,
+        bodyColor: '#2563EB',
+        sideColor: '#1E40AF',
+        roofColor: '#60A5FA',
+      },
+    ],
     cones: [
-      // Carril de salida amplio
       { x: 150, y: 810 },
       { x: 260, y: 810 },
       { x: 370, y: 810 },
       { x: 480, y: 810 },
       { x: 590, y: 810 },
       { x: 700, y: 810 },
-      // Guía izquierda de aproximación
       { x: 180, y: 560 },
       { x: 270, y: 460 },
       { x: 360, y: 370 },
@@ -258,14 +396,13 @@ const SCENARIOS: ScenarioConfig[] = [
       { x: 665, y: 275 },
       { x: 665, y: 200 },
       { x: 665, y: 125 },
-      // Guía derecha
       { x: 760, y: 340 },
       { x: 840, y: 440 },
     ],
     arrows: [
-      { x: 320, y: 640, angleDeg: -42 },
-      { x: 445, y: 500, angleDeg: -65 },
-      { x: 555, y: 360, angleDeg: -90 },
+      { x: 325, y: 640, angleDeg: -42 },
+      { x: 455, y: 500, angleDeg: -65 },
+      { x: 575, y: 350, angleDeg: -90 },
     ],
   },
   {
@@ -278,20 +415,38 @@ const SCENARIOS: ScenarioConfig[] = [
     parkingZone: {
       x: 510,
       y: 130,
-      w: 160,
-      h: 92,
+      w: 164,
+      h: 96,
       targetAngleDeg: 0,
     },
+    parkedCars: [
+      // Vehículos 3D estacionados adelante y atrás del cajón de parqueo paralelo
+      {
+        x: 345,
+        y: 144,
+        w: 112,
+        d: 56,
+        bodyColor: '#F59E0B',
+        sideColor: '#B45309',
+        roofColor: '#FBBF24',
+      },
+      {
+        x: 725,
+        y: 144,
+        w: 112,
+        d: 56,
+        bodyColor: '#0EA5E9',
+        sideColor: '#0369A1',
+        roofColor: '#38BDF8',
+      },
+    ],
     cones: [
       { x: 310, y: 130 },
-      { x: 395, y: 130 },
       { x: 480, y: 130 },
       { x: 480, y: 225 },
       { x: 700, y: 130 },
-      { x: 785, y: 130 },
-      { x: 870, y: 130 },
       { x: 700, y: 225 },
-      // Borde inferior del carril
+      { x: 870, y: 130 },
       { x: 220, y: 720 },
       { x: 360, y: 720 },
       { x: 500, y: 720 },
@@ -313,28 +468,37 @@ const SCENARIOS: ScenarioConfig[] = [
     startY: 740,
     startAngleDeg: -28,
     parkingZone: {
-      x: 840,
-      y: 145,
-      w: 150,
-      h: 100,
+      x: 830,
+      y: 135,
+      w: 156,
+      h: 108,
       targetAngleDeg: 0,
     },
+    parkedCars: [
+      {
+        x: 645,
+        y: 145,
+        w: 110,
+        d: 56,
+        bodyColor: '#10B981',
+        sideColor: '#047857',
+        roofColor: '#34D399',
+      },
+    ],
     cones: [
-      // Puertas de eslalon en la gran explanada
       { x: 410, y: 540 },
       { x: 410, y: 615 },
       { x: 590, y: 360 },
       { x: 590, y: 435 },
       { x: 750, y: 410 },
       { x: 750, y: 485 },
-      // Borde exterior de referencia
       { x: 260, y: 820 },
       { x: 450, y: 800 },
       { x: 650, y: 740 },
       { x: 840, y: 640 },
       { x: 980, y: 480 },
-      { x: 810, y: 145 },
-      { x: 1015, y: 145 },
+      { x: 810, y: 135 },
+      { x: 1010, y: 135 },
     ],
     arrows: [
       { x: 310, y: 650, angleDeg: -30 },
@@ -463,58 +627,163 @@ function projectPolygon3D(
   };
 }
 
-// Pre-generación de losas de pavimento y carriles para un piso 3D realista con sensación real de velocidad
+interface ProjectedFace3D {
+  pointsStr: string;
+  fill: string;
+  stroke: string;
+  label?: string;
+  labelX?: number;
+  labelY?: number;
+}
+
+// Motor de extrusión de volúmenes 3D (proyecta caras visibles con sombreado direccional exacto)
+function projectBox3D(
+  box: {
+    x: number;
+    y: number;
+    z: number;
+    w: number;
+    d: number;
+    h: number;
+    frontColor: string;
+    sideColor: string;
+    topColor: string;
+    strokeColor?: string;
+    label?: string;
+  },
+  camX: number,
+  camY: number,
+  camZ: number,
+  camYaw: number,
+  pitchOffset = 10
+): { faces: ProjectedFace3D[]; depth: number } | null {
+  const { x, y, z, w, d, h, frontColor, sideColor, topColor, strokeColor = '#0F172A', label } = box;
+  const centerX = x + w / 2;
+  const centerY = y + d / 2;
+  const dist = Math.hypot(centerX - camX, centerY - camY);
+  if (dist > 1180) return null;
+
+  const b0 = { x, y, z };
+  const b1 = { x: x + w, y, z };
+  const b2 = { x: x + w, y: y + d, z };
+  const b3 = { x, y: y + d, z };
+  const t0 = { x, y, z: z + h };
+  const t1 = { x: x + w, y, z: z + h };
+  const t2 = { x: x + w, y: y + d, z: z + h };
+  const t3 = { x, y: y + d, z: z + h };
+
+  const faces: ProjectedFace3D[] = [];
+
+  // Caras laterales X (Oeste / Este)
+  if (camX < x) {
+    const f = projectPolygon3D([b0, b3, t3, t0], camX, camY, camZ, camYaw, pitchOffset);
+    if (f) faces.push({ pointsStr: f.pointsStr, fill: sideColor, stroke: strokeColor });
+  } else if (camX > x + w) {
+    const f = projectPolygon3D([b1, b2, t2, t1], camX, camY, camZ, camYaw, pitchOffset);
+    if (f) faces.push({ pointsStr: f.pointsStr, fill: sideColor, stroke: strokeColor });
+  }
+
+  // Caras frontales/traseras Y (Norte / Sur)
+  if (camY < y) {
+    const f = projectPolygon3D([b0, b1, t1, t0], camX, camY, camZ, camYaw, pitchOffset);
+    if (f) {
+      faces.push({
+        pointsStr: f.pointsStr,
+        fill: frontColor,
+        stroke: strokeColor,
+        label,
+        labelX: f.centerSx,
+        labelY: f.centerSy,
+      });
+    }
+  } else if (camY > y + d) {
+    const f = projectPolygon3D([b3, b2, t2, t3], camX, camY, camZ, camYaw, pitchOffset);
+    if (f) {
+      faces.push({
+        pointsStr: f.pointsStr,
+        fill: frontColor,
+        stroke: strokeColor,
+        label,
+        labelX: f.centerSx,
+        labelY: f.centerSy,
+      });
+    }
+  }
+
+  // Cara superior / Techo (Z + H)
+  if (camZ > z + h) {
+    const f = projectPolygon3D([t0, t1, t2, t3], camX, camY, camZ, camYaw, pitchOffset);
+    if (f) faces.push({ pointsStr: f.pointsStr, fill: topColor, stroke: strokeColor });
+  }
+
+  if (faces.length === 0) return null;
+  return { faces, depth: dist };
+}
+
+// Pre-generación de losas de pavimento con variación tonal y brillo especular
 const ASPHALT_TILES: { x: number; y: number; w: number; h: number; shade: string }[] = [];
-const tileStepX = 160;
-const tileStepY = 140;
+const tileStepX = 140;
+const tileStepY = 120;
 for (let gx = 80; gx < WORLD_W - 80; gx += tileStepX) {
   for (let gy = 80; gy < WORLD_H - 80; gy += tileStepY) {
-    const isAlt = ((gx / tileStepX + gy / tileStepY) | 0) % 2 === 0;
+    const idx = (((gx / tileStepX) | 0) + ((gy / tileStepY) | 0)) % 3;
+    const shade = idx === 0 ? '#283548' : idx === 1 ? '#1E293B' : '#233044';
     ASPHALT_TILES.push({
       x: gx,
       y: gy,
       w: Math.min(tileStepX, WORLD_W - 80 - gx),
       h: Math.min(tileStepY, WORLD_H - 80 - gy),
-      shade: isAlt ? '#334155' : '#2D3A4E',
+      shade,
     });
   }
 }
 
-// Bordillos perimetrales 3D Rojos y Blancos
-const CURB_SEGMENTS: { x1: number; y1: number; x2: number; y2: number; color: string }[] = [];
+// Bordillos perimetrales 3D con volumen real (altura z = 4.5)
+const CURB_BOXES_3D: {
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+  topColor: string;
+  sideColor: string;
+}[] = [];
 const curbStep = 80;
 for (let cx = 80; cx < WORLD_W - 80; cx += curbStep) {
   const isRed = ((cx / curbStep) | 0) % 2 === 0;
-  CURB_SEGMENTS.push({
-    x1: cx,
-    y1: 80,
-    x2: Math.min(cx + curbStep, WORLD_W - 80),
-    y2: 90,
-    color: isRed ? '#DC2626' : '#F8FAFC',
+  CURB_BOXES_3D.push({
+    x: cx,
+    y: 72,
+    w: Math.min(curbStep, WORLD_W - 80 - cx),
+    d: 10,
+    topColor: isRed ? '#EF4444' : '#F8FAFC',
+    sideColor: isRed ? '#B91C1C' : '#CBD5E1',
   });
-  CURB_SEGMENTS.push({
-    x1: cx,
-    y1: WORLD_H - 90,
-    x2: Math.min(cx + curbStep, WORLD_W - 80),
-    y2: WORLD_H - 80,
-    color: isRed ? '#F8FAFC' : '#DC2626',
+  CURB_BOXES_3D.push({
+    x: cx,
+    y: WORLD_H - 82,
+    w: Math.min(curbStep, WORLD_W - 80 - cx),
+    d: 10,
+    topColor: isRed ? '#F8FAFC' : '#EF4444',
+    sideColor: isRed ? '#CBD5E1' : '#B91C1C',
   });
 }
 for (let cy = 80; cy < WORLD_H - 80; cy += curbStep) {
   const isRed = ((cy / curbStep) | 0) % 2 === 0;
-  CURB_SEGMENTS.push({
-    x1: 80,
-    y1: cy,
-    x2: 90,
-    y2: Math.min(cy + curbStep, WORLD_H - 80),
-    color: isRed ? '#DC2626' : '#F8FAFC',
+  CURB_BOXES_3D.push({
+    x: 72,
+    y: cy,
+    w: 10,
+    d: Math.min(curbStep, WORLD_H - 80 - cy),
+    topColor: isRed ? '#EF4444' : '#F8FAFC',
+    sideColor: isRed ? '#B91C1C' : '#CBD5E1',
   });
-  CURB_SEGMENTS.push({
-    x1: WORLD_W - 90,
-    y1: cy,
-    x2: WORLD_W - 80,
-    y2: Math.min(cy + curbStep, WORLD_H - 80),
-    color: isRed ? '#F8FAFC' : '#DC2626',
+  CURB_BOXES_3D.push({
+    x: WORLD_W - 82,
+    y: cy,
+    w: 10,
+    d: Math.min(curbStep, WORLD_H - 80 - cy),
+    topColor: isRed ? '#F8FAFC' : '#EF4444',
+    sideColor: isRed ? '#CBD5E1' : '#B91C1C',
   });
 }
 
@@ -526,13 +795,21 @@ export default function ManeuversSimulatorScreen() {
   const { playLeftSignal, playRightSignal, playSuccess, playError } = usePsychAudio();
 
   const [scenario, setScenario] = useState<ScenarioConfig>(SCENARIOS[0]);
+  const [completedLevelIds, setCompletedLevelIds] = useState<string[]>([]);
+  const [lastGrade, setLastGrade] = useState<AptitudeGrade>('EXCELENTE');
+
   const [carState, setCarState] = useState({
     x: SCENARIOS[0].startX,
     y: SCENARIOS[0].startY,
     angleRad: (SCENARIOS[0].startAngleDeg * Math.PI) / 180,
     speed: 0,
     steerRad: 0,
-    rpm: 900,
+    rpm: 850,
+    camPitch: 0,
+    camRollDeg: 0,
+    camBobY: 0,
+    camYawOff: 0,
+    animPhase: 0,
   });
 
   const [tireTracks, setTireTracks] = useState<{ x: number; y: number; angleRad: number }[]>([]);
@@ -562,7 +839,7 @@ export default function ManeuversSimulatorScreen() {
   const [parkedSuccess, setParkedSuccess] = useState<boolean>(false);
   const [collisionFlash, setCollisionFlash] = useState<boolean>(false);
   const [statusBanner, setStatusBanner] = useState<string>(
-    '1ª Marcha lista • Use los pedales independientes: EMBRAGUE, FRENO y ACELERADOR'
+    '1ª Marcha suave activa • Aceleración progresiva sin tirones y suspensión 3D activa'
   );
 
   const physicsRef = useRef({
@@ -571,7 +848,14 @@ export default function ManeuversSimulatorScreen() {
     angleRad: (SCENARIOS[0].startAngleDeg * Math.PI) / 180,
     speed: 0,
     steerRad: 0,
-    rpm: 900,
+    targetSteerRad: 0,
+    throttleSmooth: 0,
+    camPitch: 0,
+    camRollDeg: 0,
+    camBobY: 0,
+    camYawOff: 0,
+    animPhase: 0,
+    rpm: 850,
     clutch: false,
     brake: false,
     gas: false,
@@ -583,12 +867,22 @@ export default function ManeuversSimulatorScreen() {
     startTime: 0,
     lastCollisionTime: 0,
     lastTrackTime: 0,
+    lastHudTime: 0,
     completed: false,
   });
 
+  const currentLevelIdx = useMemo(
+    () => SCENARIOS.findIndex((s) => s.id === scenario.id),
+    [scenario.id]
+  );
+  const nextScenario =
+    currentLevelIdx >= 0 && currentLevelIdx < SCENARIOS.length - 1
+      ? SCENARIOS[currentLevelIdx + 1]
+      : null;
+
   useEffect(() => {
     const normalizedSteer = Math.max(-1, Math.min(1, wheelDragX / STEERING_WHEEL_RADIUS));
-    physicsRef.current.steerRad = normalizedSteer * MAX_STEER_RAD;
+    physicsRef.current.targetSteerRad = normalizedSteer * MAX_STEER_RAD;
   }, [wheelDragX]);
 
   useEffect(() => {
@@ -601,22 +895,30 @@ export default function ManeuversSimulatorScreen() {
     physicsRef.current.handbrakeOn = handbrakeOn;
   }, [clutchActive, brakeActive, gasActive, throttleLock, gear, engineOn, handbrakeOn]);
 
-  // Soporte de teclado en Web (W=Acelerador, S=Freno, Espacio/C=Embrague, A/D=Volante, 1-5/R/N=Caja)
+  // Soporte de teclado en Web (W=Acelerador, S=Freno, C/Shift=Embrague, A/D=Volante, 1-5/R/N=Caja)
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
+      if (k === 'arrowleft' || k === 'a') {
+        setWheelDragX((prev) => Math.max(-STEERING_WHEEL_RADIUS, prev - 10));
+        return;
+      }
+      if (k === 'arrowright' || k === 'd') {
+        setWheelDragX((prev) => Math.min(STEERING_WHEEL_RADIUS, prev + 10));
+        return;
+      }
+      if (e.repeat) return;
       if (k === 'arrowup' || k === 'w') {
+        physicsRef.current.gas = true;
         setGasActive(true);
       } else if (k === 'arrowdown' || k === 's') {
+        physicsRef.current.brake = true;
         setBrakeActive(true);
       } else if (k === 'c' || k === 'shift') {
+        physicsRef.current.clutch = true;
         setClutchActive(true);
-      } else if (k === 'arrowleft' || k === 'a') {
-        setWheelDragX((prev) => Math.max(-STEERING_WHEEL_RADIUS, prev - 14));
-      } else if (k === 'arrowright' || k === 'd') {
-        setWheelDragX((prev) => Math.min(STEERING_WHEEL_RADIUS, prev + 14));
       } else if (['1', '2', '3', '4', '5'].includes(k)) {
         setGear(k as ManualGear);
       } else if (k === 'r') {
@@ -629,10 +931,13 @@ export default function ManeuversSimulatorScreen() {
     const handleKeyUp = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
       if (k === 'arrowup' || k === 'w') {
+        physicsRef.current.gas = false;
         setGasActive(false);
       } else if (k === 'arrowdown' || k === 's') {
+        physicsRef.current.brake = false;
         setBrakeActive(false);
       } else if (k === 'c' || k === 'shift') {
+        physicsRef.current.clutch = false;
         setClutchActive(false);
       } else if (k === 'arrowleft' || k === 'a' || k === 'arrowright' || k === 'd') {
         setWheelDragX(0);
@@ -688,7 +993,14 @@ export default function ManeuversSimulatorScreen() {
       angleRad: initAngle,
       speed: 0,
       steerRad: 0,
-      rpm: 900,
+      targetSteerRad: 0,
+      throttleSmooth: 0,
+      camPitch: 0,
+      camRollDeg: 0,
+      camBobY: 0,
+      camYawOff: 0,
+      animPhase: 0,
+      rpm: 850,
       clutch: false,
       brake: false,
       gas: false,
@@ -700,6 +1012,7 @@ export default function ManeuversSimulatorScreen() {
       startTime: performance.now(),
       lastCollisionTime: 0,
       lastTrackTime: 0,
+      lastHudTime: 0,
       completed: false,
     };
     setCarState({
@@ -708,7 +1021,12 @@ export default function ManeuversSimulatorScreen() {
       angleRad: initAngle,
       speed: 0,
       steerRad: 0,
-      rpm: 900,
+      rpm: 850,
+      camPitch: 0,
+      camRollDeg: 0,
+      camBobY: 0,
+      camYawOff: 0,
+      animPhase: 0,
     });
     setTireTracks([]);
     setHitConeIndices([]);
@@ -725,7 +1043,7 @@ export default function ManeuversSimulatorScreen() {
     setAlignmentPct(0);
     setParkedSuccess(false);
     setCollisionFlash(false);
-    setStatusBanner('1ª Marcha lista • Presione ACELERADOR para avanzar o FRENO para detenerse');
+    setStatusBanner(`${targetScenario.shortLabel} activo • Acelerador progresivo sin tirones`);
   }, []);
 
   const handleSelectScenario = useCallback(
@@ -736,68 +1054,88 @@ export default function ManeuversSimulatorScreen() {
     [resetScenario]
   );
 
-  // Motor físico 60 FPS con pedales independientes (Embrague, Freno, Acelerador) y Caja en H
+  const handleContinueNextLevel = useCallback(() => {
+    if (nextScenario) {
+      setScenario(nextScenario);
+      resetScenario(nextScenario);
+    } else {
+      router.push('/');
+    }
+  }, [nextScenario, resetScenario]);
+
+  // Motor físico 60 FPS con amortiguación exponencial de acelerador/dirección y suspensión 3D de cámara
   useEffect(() => {
     let rafId: number;
     let lastTime = performance.now();
 
     const step = (now: number) => {
-      const dt = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000));
+      const dt = Math.min(0.04, Math.max(0.001, (now - lastTime) / 1000));
       lastTime = now;
 
       const p = physicsRef.current;
       if (p.startTime === 0) p.startTime = now;
+      p.animPhase += dt;
 
       if (!p.completed) {
-        const elapsed = Number(((now - p.startTime) / 1000).toFixed(1));
-        setElapsedSec(elapsed);
-
+        const prevSpeed = p.speed;
         const spec = GEAR_SPECS[p.gear];
-        const baseAccel = 165 * spec.accelFactor;
-        const brakeDecel = 310;
-        const rollingFriction = 48;
         const isAccelerating = p.gas || p.throttleLock;
 
+        // Suavizado progresivo del pedal del acelerador y de la dirección para eliminar tirones
+        const targetThrottle = isAccelerating && !p.brake && !p.handbrakeOn && p.engineOn ? 1 : 0;
+        const throttleLerp = 1 - Math.exp(-(targetThrottle > p.throttleSmooth ? 2.4 : 4.2) * dt);
+        p.throttleSmooth += (targetThrottle - p.throttleSmooth) * throttleLerp;
+
+        const steerLerp = 1 - Math.exp(-8.5 * dt);
+        p.steerRad += (p.targetSteerRad - p.steerRad) * steerLerp;
+
+        // Curva cuadrática suave para que el arranque sea delicado y sin tirones
+        const smoothThrottleCurve = p.throttleSmooth * (0.32 + 0.68 * p.throttleSmooth);
+        const baseAccel = 38 * spec.accelFactor * Math.max(0.12, smoothThrottleCurve);
+        const brakeDecel = 78;
+        const rollingFriction = 14;
+
         if (!p.engineOn) {
-          p.rpm = 0;
-          p.speed = Math.abs(p.speed) < 3 ? 0 : p.speed * 0.92;
+          p.rpm += (0 - p.rpm) * Math.min(1, dt * 5);
+          p.speed = Math.abs(p.speed) < 0.35 ? 0 : p.speed * Math.pow(0.32, dt);
         } else if (p.handbrakeOn) {
-          p.speed = Math.abs(p.speed) < 3 ? 0 : p.speed * 0.8;
-          p.rpm = 900;
+          p.speed = Math.abs(p.speed) < 0.35 ? 0 : p.speed * Math.pow(0.12, dt);
+          p.rpm += (850 - p.rpm) * Math.min(1, dt * 6);
         } else if (p.brake) {
-          // PEDAL DE FRENO INDEPENDIENTE: Exclusivamente frena y detiene el vehículo a 0 km/h
-          if (Math.abs(p.speed) < 5) {
+          // PEDAL DE FRENO INDEPENDIENTE: Frenado progresivo y realista
+          if (Math.abs(p.speed) < 0.45) {
             p.speed = 0;
           } else if (p.speed > 0) {
             p.speed = Math.max(0, p.speed - brakeDecel * dt);
           } else {
             p.speed = Math.min(0, p.speed + brakeDecel * dt);
           }
-          p.rpm = 900;
+          p.rpm += (850 - p.rpm) * Math.min(1, dt * 6);
         } else if (p.clutch || p.gear === 'N') {
-          // PEDAL DE EMBRAGUE O NEUTRO: Desacopla la transmisión; si pisa acelerador sube RPM en vacío
-          p.rpm = isAccelerating ? 5100 : 950;
-          if (Math.abs(p.speed) < 3) {
+          // PEDAL DE EMBRAGUE O NEUTRO: Desacopla transmisión suavemente
+          const targetFreeRpm = isAccelerating ? 3800 : 860;
+          p.rpm += (targetFreeRpm - p.rpm) * Math.min(1, dt * 5);
+          if (Math.abs(p.speed) < 0.3) {
             p.speed = 0;
           } else if (p.speed > 0) {
-            p.speed = Math.max(0, p.speed - rollingFriction * 0.7 * dt);
+            p.speed = Math.max(0, p.speed - rollingFriction * 0.55 * dt);
           } else {
-            p.speed = Math.min(0, p.speed + rollingFriction * 0.7 * dt);
+            p.speed = Math.min(0, p.speed + rollingFriction * 0.55 * dt);
           }
-        } else if (isAccelerating) {
-          // PEDAL DE ACELERADOR INDEPENDIENTE: Impulsa en la marcha seleccionada (1ª-5ª adelante, R atrás)
+        } else if (isAccelerating || p.throttleSmooth > 0.04) {
+          // PEDAL DE ACELERADOR INDEPENDIENTE: Empuje gradual y fluido sin tirones
           if (p.gear === 'R') {
             p.speed = Math.max(spec.maxSpeedPx, p.speed - baseAccel * dt);
           } else {
             if (p.speed <= spec.maxSpeedPx) {
               p.speed = Math.min(spec.maxSpeedPx, p.speed + baseAccel * dt);
             } else {
-              p.speed = Math.max(spec.maxSpeedPx, p.speed - rollingFriction * 1.6 * dt);
+              p.speed = Math.max(spec.maxSpeedPx, p.speed - rollingFriction * 1.1 * dt);
             }
           }
         } else {
-          // Fricción natural al soltar pedales
-          if (Math.abs(p.speed) < 3) {
+          // Inercia suave al soltar el acelerador (freno de motor progresivo)
+          if (Math.abs(p.speed) < 0.3) {
             p.speed = 0;
           } else if (p.speed > 0) {
             p.speed = Math.max(0, p.speed - rollingFriction * dt);
@@ -807,20 +1145,42 @@ export default function ManeuversSimulatorScreen() {
         }
 
         if (p.engineOn && !p.clutch && p.gear !== 'N') {
-          const maxForGear = Math.max(50, Math.abs(spec.maxSpeedPx));
-          const ratio = Math.min(1.15, Math.abs(p.speed) / maxForGear);
-          p.rpm = Math.round(900 + ratio * 5400);
+          const maxForGear = Math.max(24, Math.abs(spec.maxSpeedPx));
+          const ratio = Math.min(1.06, Math.abs(p.speed) / maxForGear);
+          const targetRpm = 850 + ratio * 3400 + p.throttleSmooth * 360;
+          p.rpm += (targetRpm - p.rpm) * Math.min(1, dt * 6.5);
         }
 
         const nextX = p.x + p.speed * Math.cos(p.angleRad) * dt;
         const nextY = p.y + p.speed * Math.sin(p.angleRad) * dt;
-        const angularVel = (p.speed / WHEELBASE) * Math.tan(p.steerRad) * 1.15;
+        const angularVel = (p.speed / WHEELBASE) * Math.tan(p.steerRad) * 1.08;
         const nextAngle = p.angleRad + angularVel * dt;
 
-        // Límites del complejo vial con deslizamiento suave junto a los bordillos
         p.x = Math.max(96, Math.min(WORLD_W - 96, nextX));
         p.y = Math.max(96, Math.min(WORLD_H - 96, nextY));
         p.angleRad = nextAngle;
+
+        // FÍSICAS DE SUSPENSIÓN Y REACCIÓN DE LA CÁMARA 3D (Cabeceo, balanceo lateral y vibración viva)
+        const longitudinalAccel = (p.speed - prevSpeed) / dt;
+        const targetPitch = Math.max(
+          -5.5,
+          Math.min(6.5, -longitudinalAccel * 0.045 + (p.brake && Math.abs(p.speed) > 2 ? 3.8 : 0) - p.throttleSmooth * 2.1)
+        );
+        p.camPitch += (targetPitch - p.camPitch) * Math.min(1, dt * 4.2);
+
+        const centrifugalRoll = -angularVel * Math.abs(p.speed) * 0.022 - p.steerRad * (p.speed * 0.045);
+        const targetRoll = Math.max(-4.2, Math.min(4.2, centrifugalRoll));
+        p.camRollDeg += (targetRoll - p.camRollDeg) * Math.min(1, dt * 4.5);
+
+        // Inercia de la cabeza/cámara: al girar el volante la vista se retrasa y luego alcanza al carro
+        const targetYawOff = Math.max(-0.06, Math.min(0.06, -angularVel * 0.07));
+        p.camYawOff += (targetYawOff - p.camYawOff) * Math.min(1, dt * 3.8);
+
+        const speedRatio = Math.min(1, Math.abs(p.speed) / 65);
+        const roadWave = Math.sin(p.animPhase * (6 + speedRatio * 9)) * (0.08 + speedRatio * 0.5);
+        const roadJitter = Math.sin(p.animPhase * 31.7) * Math.cos(p.animPhase * 17.3) * speedRatio * 0.22;
+        const engineIdlingWave = p.engineOn ? Math.cos(p.animPhase * 19) * 0.1 : 0;
+        p.camBobY = roadWave + roadJitter + engineIdlingWave;
 
         // Colisión con conos
         const corners = getCarCorners(p.x, p.y, p.angleRad);
@@ -835,18 +1195,19 @@ export default function ManeuversSimulatorScreen() {
         if (touchedConeIdx !== -1 && now - p.lastCollisionTime > 1100) {
           p.lastCollisionTime = now;
           p.collisions += 1;
+          p.camPitch = 5.2; // Impulso físico de impacto en la suspensión
           setCollisions(p.collisions);
           setHitConeIndices((prev) =>
             prev.includes(touchedConeIdx) ? prev : [...prev, touchedConeIdx]
           );
           setCollisionFlash(true);
-          setStatusBanner('¡Atención! Cono impactado — Corrija con el volante y los pedales');
+          setStatusBanner('¡Atención! Cono impactado — Corrija suavemente con volante y pedales');
           playError();
           setTimeout(() => setCollisionFlash(false), 420);
         }
 
         // Huellas de neumáticos en el pavimento
-        if (Math.abs(p.speed) > 12 && now - p.lastTrackTime > 150) {
+        if (Math.abs(p.speed) > 9 && now - p.lastTrackTime > 165) {
           p.lastTrackTime = now;
           setTireTracks((prev) => [
             ...prev.slice(-28),
@@ -862,29 +1223,50 @@ export default function ManeuversSimulatorScreen() {
 
         const cornersInside = corners.filter(
           (c) =>
-            c.x >= pz.x - 10 &&
-            c.x <= pz.x + pz.w + 10 &&
-            c.y >= pz.y - 10 &&
-            c.y <= pz.y + pz.h + 10
+            c.x >= pz.x - 14 &&
+            c.x <= pz.x + pz.w + 14 &&
+            c.y >= pz.y - 14 &&
+            c.y <= pz.y + pz.h + 14
         ).length;
 
-        const distScore = Math.max(0, 100 - distToCenter * 0.45);
-        const cornerScore = cornersInside * 25;
-        const computedAlignment = Math.min(100, Math.round(distScore * 0.45 + cornerScore * 0.55));
-        setAlignmentPct(computedAlignment);
+        const centerInside =
+          p.x >= pz.x - 8 &&
+          p.x <= pz.x + pz.w + 8 &&
+          p.y >= pz.y - 8 &&
+          p.y <= pz.y + pz.h + 8;
 
-        if (cornersInside === 4 && Math.abs(p.speed) < 8) {
+        const distScore = Math.max(0, 100 - distToCenter * 0.42);
+        const cornerScore = cornersInside * 25;
+        const computedAlignment = Math.min(100, Math.round(distScore * 0.4 + cornerScore * 0.6));
+
+        const elapsed = Number(((now - p.startTime) / 1000).toFixed(1));
+        if (now - p.lastHudTime > 95) {
+          p.lastHudTime = now;
+          setElapsedSec(elapsed);
+          setAlignmentPct(computedAlignment);
+        }
+
+        if (centerInside && Math.abs(p.speed) >= 8) {
+          setStatusBanner('¡Está dentro de la Zona [P]! Presione FRENO para completar el nivel');
+        }
+
+        if ((cornersInside >= 3 || (centerInside && distToCenter < 54)) && Math.abs(p.speed) < 8) {
           p.completed = true;
           p.speed = 0;
+          setThrottleLock(false);
+          setElapsedSec(elapsed);
+          setAlignmentPct(100);
           setParkedSuccess(true);
+          setCompletedLevelIds((prev) => (prev.includes(scenario.id) ? prev : [...prev, scenario.id]));
           playSuccess();
 
           let grade: AptitudeGrade = 'APTO';
-          if (elapsed < 45 && p.collisions === 0 && seatbeltOn) {
+          if (elapsed < 55 && p.collisions === 0 && seatbeltOn) {
             grade = 'EXCELENTE';
-          } else if (p.collisions > 3 || elapsed > 95) {
+          } else if (p.collisions > 3 || elapsed > 120) {
             grade = 'NO APTO';
           }
+          setLastGrade(grade);
 
           setManeuverResult({
             elapsedSeconds: elapsed,
@@ -902,7 +1284,12 @@ export default function ManeuversSimulatorScreen() {
           angleRad: p.angleRad,
           speed: p.speed,
           steerRad: p.steerRad,
-          rpm: p.rpm,
+          rpm: Math.round(p.rpm),
+          camPitch: p.camPitch,
+          camRollDeg: p.camRollDeg,
+          camBobY: p.camBobY,
+          camYawOff: p.camYawOff,
+          animPhase: p.animPhase,
         });
       }
 
@@ -913,7 +1300,7 @@ export default function ManeuversSimulatorScreen() {
     return () => cancelAnimationFrame(rafId);
   }, [playError, playSuccess, scenario, seatbeltOn, setManeuverResult]);
 
-  // Gesto exclusivo de la Caja de Dirección (Volante): adapta coordenadas si la pantalla está rotada 90° en móvil
+  // Gesto exclusivo de la Caja de Dirección (Volante)
   const steeringWheelGesture = Gesture.Pan()
     .runOnJS(true)
     .onChange((e) => {
@@ -953,25 +1340,25 @@ export default function ManeuversSimulatorScreen() {
 
   const steerAngleDeg = Math.round((carState.steerRad * 180) / Math.PI);
   const wheelVisualRotateDeg = steerAngleDeg * 2.6;
-  const speedKmh = Math.round(Math.abs(carState.speed) * 0.32);
+  const speedKmh = Math.round(Math.abs(carState.speed) * 0.44);
 
-  // Renderizado 3D en Primera Persona con entorno amplio y piso realista
+  // Renderizado 3D con físicas de cámara, iluminación volumétrica, faros proyectados y entorno vivo
   const world3D = useMemo(() => {
     const camDistBack = 4;
-    const camZ = 38;
-    const pitchOffset = 10;
+    const camZ = 38 + carState.camBobY * 0.65;
+    const pitchOffset = 10 + carState.camPitch + carState.camBobY;
 
     const camX = carState.x - Math.cos(carState.angleRad) * camDistBack;
     const camY = carState.y - Math.sin(carState.angleRad) * camDistBack;
-    const camYaw = carState.angleRad;
+    const camYaw = carState.angleRad + carState.camYawOff;
 
     // 1. Base de asfalto general del complejo vial
     const asphaltBase = projectPolygon3D(
       [
-        { x: 80, y: 80, z: 0 },
-        { x: WORLD_W - 80, y: 80, z: 0 },
-        { x: WORLD_W - 80, y: WORLD_H - 80, z: 0 },
-        { x: 80, y: WORLD_H - 80, z: 0 },
+        { x: 75, y: 75, z: 0 },
+        { x: WORLD_W - 75, y: 75, z: 0 },
+        { x: WORLD_W - 75, y: WORLD_H - 75, z: 0 },
+        { x: 75, y: WORLD_H - 75, z: 0 },
       ],
       camX,
       camY,
@@ -980,17 +1367,17 @@ export default function ManeuversSimulatorScreen() {
       pitchOffset
     );
 
-    // 2. Losas texturizadas de asfalto y concreto (dan sensación real de velocidad y perspectiva en el piso)
+    // 2. Losas texturizadas de asfalto y concreto
     const groundTiles: { pointsStr: string; shade: string }[] = [];
     ASPHALT_TILES.forEach((tile) => {
       const centerDist = Math.hypot(tile.x + tile.w / 2 - camX, tile.y + tile.h / 2 - camY);
-      if (centerDist > 920) return;
+      if (centerDist > 960) return;
       const poly = projectPolygon3D(
         [
-          { x: tile.x + 2, y: tile.y + 2, z: 0.05 },
-          { x: tile.x + tile.w - 2, y: tile.y + 2, z: 0.05 },
-          { x: tile.x + tile.w - 2, y: tile.y + tile.h - 2, z: 0.05 },
-          { x: tile.x + 2, y: tile.y + tile.h - 2, z: 0.05 },
+          { x: tile.x + 1.5, y: tile.y + 1.5, z: 0.05 },
+          { x: tile.x + tile.w - 1.5, y: tile.y + 1.5, z: 0.05 },
+          { x: tile.x + tile.w - 1.5, y: tile.y + tile.h - 1.5, z: 0.05 },
+          { x: tile.x + 1.5, y: tile.y + tile.h - 1.5, z: 0.05 },
         ],
         camX,
         camY,
@@ -1003,15 +1390,27 @@ export default function ManeuversSimulatorScreen() {
       }
     });
 
-    // 3. Bordillos perimetrales 3D Rojos y Blancos
-    const curbPolys: { pointsStr: string; color: string }[] = [];
-    CURB_SEGMENTS.forEach((seg) => {
-      const poly = projectPolygon3D(
+    // 2b. Haces de luz 3D proyectados sobre el pavimento por los faros del vehículo
+    const headlightBeams: string[] = [];
+    const cosCar = Math.cos(carState.angleRad);
+    const sinCar = Math.sin(carState.angleRad);
+    [-13, 13].forEach((latOffset) => {
+      const beamStartX = carState.x + 22 * cosCar - latOffset * sinCar;
+      const beamStartY = carState.y + 22 * sinCar + latOffset * cosCar;
+      const beamPoly = projectPolygon3D(
         [
-          { x: seg.x1, y: seg.y1, z: 0.2 },
-          { x: seg.x2, y: seg.y1, z: 0.2 },
-          { x: seg.x2, y: seg.y2, z: 0.2 },
-          { x: seg.x1, y: seg.y2, z: 0.2 },
+          { x: beamStartX - 4 * sinCar, y: beamStartY + 4 * cosCar, z: 0.22 },
+          { x: beamStartX + 4 * sinCar, y: beamStartY - 4 * cosCar, z: 0.22 },
+          {
+            x: beamStartX + 165 * cosCar + (latOffset * 1.8 + 36) * sinCar,
+            y: beamStartY + 165 * sinCar - (latOffset * 1.8 + 36) * cosCar,
+            z: 0.22,
+          },
+          {
+            x: beamStartX + 165 * cosCar + (latOffset * 1.8 - 36) * sinCar,
+            y: beamStartY + 165 * sinCar - (latOffset * 1.8 - 36) * cosCar,
+            z: 0.22,
+          },
         ],
         camX,
         camY,
@@ -1019,19 +1418,48 @@ export default function ManeuversSimulatorScreen() {
         camYaw,
         pitchOffset
       );
-      if (poly) curbPolys.push({ pointsStr: poly.pointsStr, color: seg.color });
+      if (beamPoly) headlightBeams.push(beamPoly.pointsStr);
     });
 
-    // 4. Marcas viales realistas: Líneas de carril segmentadas, doble línea amarilla y paso cebra
+    // 3. Bordillos perimetrales 3D con relieve real (z = 0..4.5)
+    const curbBoxes: ProjectedFace3D[] = [];
+    CURB_BOXES_3D.forEach((cb) => {
+      const boxProj = projectBox3D(
+        {
+          x: cb.x,
+          y: cb.y,
+          z: 0,
+          w: cb.w,
+          d: cb.d,
+          h: 4.5,
+          frontColor: cb.sideColor,
+          sideColor: cb.sideColor,
+          topColor: cb.topColor,
+          strokeColor: '#0F172A',
+        },
+        camX,
+        camY,
+        camZ,
+        camYaw,
+        pitchOffset
+      );
+      if (boxProj) {
+        curbBoxes.push(...boxProj.faces);
+      }
+    });
+
+    // 4. Marcas viales realistas: Líneas de carril segmentadas, doble línea central amarilla y paso cebra
     const whiteLaneDashes: string[] = [];
-    for (let lx = 180; lx <= WORLD_W - 180; lx += 90) {
-      [360, 620].forEach((ly) => {
+    const yellowDividerLines: string[] = [];
+
+    for (let lx = 160; lx <= WORLD_W - 180; lx += 85) {
+      [350, 610].forEach((ly) => {
         const dash = projectPolygon3D(
           [
-            { x: lx, y: ly, z: 0.15 },
-            { x: lx + 46, y: ly, z: 0.15 },
-            { x: lx + 46, y: ly + 5, z: 0.15 },
-            { x: lx, y: ly + 5, z: 0.15 },
+            { x: lx, y: ly, z: 0.16 },
+            { x: lx + 44, y: ly, z: 0.16 },
+            { x: lx + 44, y: ly + 5, z: 0.16 },
+            { x: lx, y: ly + 5, z: 0.16 },
           ],
           camX,
           camY,
@@ -1043,14 +1471,32 @@ export default function ManeuversSimulatorScreen() {
       });
     }
 
-    // Líneas de bahías de estacionamiento superiores
-    for (let bx = 180; bx <= WORLD_W - 180; bx += 110) {
+    // Doble línea central amarilla vial
+    [476, 484].forEach((yy) => {
+      const yLine = projectPolygon3D(
+        [
+          { x: 160, y: yy, z: 0.16 },
+          { x: 840, y: yy, z: 0.16 },
+          { x: 840, y: yy + 3.5, z: 0.16 },
+          { x: 160, y: yy + 3.5, z: 0.16 },
+        ],
+        camX,
+        camY,
+        camZ,
+        camYaw,
+        pitchOffset
+      );
+      if (yLine) yellowDividerLines.push(yLine.pointsStr);
+    });
+
+    // Líneas divisorias de bahías de parqueo superiores
+    for (let bx = 160; bx <= WORLD_W - 180; bx += 112) {
       const bayLine = projectPolygon3D(
         [
-          { x: bx, y: 105, z: 0.15 },
-          { x: bx + 5, y: 105, z: 0.15 },
-          { x: bx + 5, y: 265, z: 0.15 },
-          { x: bx, y: 265, z: 0.15 },
+          { x: bx, y: 102, z: 0.16 },
+          { x: bx + 5, y: 102, z: 0.16 },
+          { x: bx + 5, y: 268, z: 0.16 },
+          { x: bx, y: 268, z: 0.16 },
         ],
         camX,
         camY,
@@ -1062,13 +1508,13 @@ export default function ManeuversSimulatorScreen() {
     }
 
     // Paso peatonal tipo cebra en 3D
-    for (let zy = 660; zy <= 790; zy += 24) {
+    for (let zy = 650; zy <= 790; zy += 22) {
       const zebra = projectPolygon3D(
         [
-          { x: 140, y: zy, z: 0.18 },
-          { x: 195, y: zy, z: 0.18 },
-          { x: 195, y: zy + 12, z: 0.18 },
-          { x: 140, y: zy + 12, z: 0.18 },
+          { x: 135, y: zy, z: 0.18 },
+          { x: 192, y: zy, z: 0.18 },
+          { x: 192, y: zy + 11, z: 0.18 },
+          { x: 135, y: zy + 11, z: 0.18 },
         ],
         camX,
         camY,
@@ -1111,13 +1557,13 @@ export default function ManeuversSimulatorScreen() {
       const cos = Math.cos(rad);
       const sin = Math.sin(rad);
       const localArrow = [
-        { dx: 28, dy: 0 },
-        { dx: 6, dy: -16 },
-        { dx: 6, dy: -6 },
-        { dx: -24, dy: -6 },
-        { dx: -24, dy: 6 },
-        { dx: 6, dy: 6 },
-        { dx: 6, dy: 16 },
+        { dx: 30, dy: 0 },
+        { dx: 6, dy: -17 },
+        { dx: 6, dy: -6.5 },
+        { dx: -26, dy: -6.5 },
+        { dx: -26, dy: 6.5 },
+        { dx: 6, dy: 6.5 },
+        { dx: 6, dy: 17 },
       ];
       const worldPts = localArrow.map((p) => ({
         x: ar.x + p.dx * cos - p.dy * sin,
@@ -1128,7 +1574,7 @@ export default function ManeuversSimulatorScreen() {
       if (proj) yellowArrows.push(proj.pointsStr);
     });
 
-    // 7. Cajón Azul Oficial de Parqueo [ P ] y Poste Vertical [ P ]
+    // 7. Cajón Azul Oficial de Parqueo [ P ], tope de llantas 3D y Poste Vertical [ P ]
     const pz = scenario.parkingZone;
     const blueParkingBox = projectPolygon3D(
       [
@@ -1137,6 +1583,27 @@ export default function ManeuversSimulatorScreen() {
         { x: pz.x + pz.w, y: pz.y + pz.h, z: 0.35 },
         { x: pz.x, y: pz.y + pz.h, z: 0.35 },
       ],
+      camX,
+      camY,
+      camZ,
+      camYaw,
+      pitchOffset
+    );
+
+    // Tope amarillo 3D de llantas al fondo del cajón [P]
+    const wheelStop3D = projectBox3D(
+      {
+        x: pz.x + 14,
+        y: pz.y + 8,
+        z: 0,
+        w: pz.w - 28,
+        d: 8,
+        h: 5.5,
+        frontColor: '#CA8A04',
+        sideColor: '#854D0E',
+        topColor: '#FACC15',
+        strokeColor: '#0F172A',
+      },
       camX,
       camY,
       camZ,
@@ -1153,7 +1620,7 @@ export default function ManeuversSimulatorScreen() {
       pitchOffset
     );
     const signTop = projectPoint3D(
-      { x: pz.x - 14, y: pz.y + 10, z: 62 },
+      { x: pz.x - 14, y: pz.y + 10, z: 66 },
       camX,
       camY,
       camZ,
@@ -1161,16 +1628,78 @@ export default function ManeuversSimulatorScreen() {
       pitchOffset
     );
 
-    // 8. Objetos 3D Verticales ordenados por profundidad (Árboles Volumétricos, Farolas Viales y Conos 3D)
+    // 8. Objetos 3D Volumétricos ordenados por profundidad (Edificios 3D, Vehículos 3D, Árboles, Farolas y Conos)
     const renderItems: {
-      type: 'TREE' | 'LAMP' | 'CONE';
+      type: 'BOX3D' | 'TREE' | 'LAMP' | 'CONE';
       depth: number;
-      sx: number;
-      sy: number;
-      scale: number;
+      sx?: number;
+      sy?: number;
+      scale?: number;
       tree?: TreePoint;
       coneHit?: boolean;
+      faces?: ProjectedFace3D[];
     }[] = [];
+
+    // Edificios, Pórtico Vial e Islas 3D
+    WORLD_BUILDINGS_3D.forEach((b) => {
+      const proj = projectBox3D(b, camX, camY, camZ, camYaw, pitchOffset);
+      if (proj) {
+        renderItems.push({
+          type: 'BOX3D',
+          depth: proj.depth,
+          faces: proj.faces,
+        });
+      }
+    });
+
+    // Vehículos 3D estacionados en las bahías vecinas (Carrocería inferior + Cabina superior)
+    scenario.parkedCars.forEach((pc) => {
+      const lowerBody = projectBox3D(
+        {
+          x: pc.x,
+          y: pc.y,
+          z: 0,
+          w: pc.w,
+          d: pc.d,
+          h: 15,
+          frontColor: pc.bodyColor,
+          sideColor: pc.sideColor,
+          topColor: pc.roofColor,
+          strokeColor: '#0F172A',
+        },
+        camX,
+        camY,
+        camZ,
+        camYaw,
+        pitchOffset
+      );
+      const upperCabin = projectBox3D(
+        {
+          x: pc.x + pc.w * 0.14,
+          y: pc.y + pc.d * 0.18,
+          z: 15,
+          w: pc.w * 0.72,
+          d: pc.d * 0.62,
+          h: 13,
+          frontColor: '#1E293B',
+          sideColor: '#0F172A',
+          topColor: pc.roofColor,
+          strokeColor: '#CBD5E1',
+        },
+        camX,
+        camY,
+        camZ,
+        camYaw,
+        pitchOffset
+      );
+      if (lowerBody) {
+        renderItems.push({
+          type: 'BOX3D',
+          depth: lowerBody.depth,
+          faces: [...lowerBody.faces, ...(upperCabin ? upperCabin.faces : [])],
+        });
+      }
+    });
 
     WORLD_TREES.forEach((tr) => {
       const pt = projectPoint3D(
@@ -1239,21 +1768,42 @@ export default function ManeuversSimulatorScreen() {
     return {
       asphaltBase,
       groundTiles,
-      curbPolys,
+      headlightBeams,
+      curbBoxes,
       whiteLaneDashes,
+      yellowDividerLines,
       projectedTracks,
       yellowArrows,
       blueParkingBox,
+      wheelStop3D,
       signBase,
       signTop,
       renderItems,
+      horizonDynamicY: Math.round(HORIZON_Y + pitchOffset),
     };
-  }, [carState.angleRad, carState.x, carState.y, hitConeIndices, scenario, tireTracks]);
+  }, [
+    carState.angleRad,
+    carState.camBobY,
+    carState.camPitch,
+    carState.camYawOff,
+    carState.x,
+    carState.y,
+    hitConeIndices,
+    scenario,
+    tireTracks,
+  ]);
 
   const leftBlinkOn = (turnSignal === 'LEFT' || turnSignal === 'HAZARD') && blinkTick;
   const rightBlinkOn = (turnSignal === 'RIGHT' || turnSignal === 'HAZARD') && blinkTick;
   const currentGearSpec = GEAR_SPECS[gear];
-  const horizonPanOffset = Math.round(((carState.angleRad * 180) / Math.PI) * 2.4) % 240;
+  // Desplazamiento continuo trigonométrico (sin saltos de módulo) para el sol, nubes y montañas
+  const skyPanSmooth = Math.sin(carState.angleRad) * 160;
+  const sunScreenX = 680 - Math.sin(carState.angleRad + 0.6) * 210;
+  const sunScreenY = Math.max(18, Math.min(78, 34 + carState.camPitch * 0.8));
+  const windSwayPx = Math.sin(carState.animPhase * 1.6) * 2.4 + Math.sin(carState.animPhase * 3.7) * 0.8;
+  const CLOUD_PERIOD = 1300;
+  const cloudBase = (((carState.animPhase * 5 - skyPanSmooth * 0.55) % CLOUD_PERIOD) + CLOUD_PERIOD) % CLOUD_PERIOD;
+  const beaconPulse = 0.65 + 0.35 * Math.sin(carState.animPhase * 4.2);
 
   // Contenedor adaptable: si el celular está en vertical (winH > winW), rota automáticamente 90° a formato horizontal completo
   const landscapeContainerStyle = isPortraitScreen
@@ -1307,11 +1857,19 @@ export default function ManeuversSimulatorScreen() {
 
               {SCENARIOS.map((sc) => {
                 const active = scenario.id === sc.id;
+                const done = completedLevelIds.includes(sc.id);
                 return (
                   <Pressable
                     key={sc.id}
                     onPress={() => handleSelectScenario(sc)}
-                    style={[styles.scenarioTab, active && styles.scenarioTabActive]}>
+                    style={[
+                      styles.scenarioTab,
+                      active && styles.scenarioTabActive,
+                      done && !active && { borderColor: PsychoPalette.mint },
+                    ]}>
+                    {done ? (
+                      <Ionicons name="checkmark-circle" size={11} color={PsychoPalette.mint} />
+                    ) : null}
                     <Text style={[styles.scenarioTabText, active && styles.scenarioTabTextActive]}>
                       {sc.shortLabel}
                     </Text>
@@ -1358,7 +1916,7 @@ export default function ManeuversSimulatorScreen() {
           </View>
         </View>
 
-        {/* ==================== VISOR 3D HORIZONTAL EN PRIMERA PERSONA (SIN RETROVISORES, ENTORNO AMPLIADO Y PISO REALISTA) ==================== */}
+        {/* ==================== VISOR 3D HORIZONTAL DE ALTA DEFINICIÓN ==================== */}
         <View
           style={[
             styles.viewportContainer,
@@ -1371,44 +1929,61 @@ export default function ManeuversSimulatorScreen() {
             viewBox={`0 0 ${VIEW3D_W} ${VIEW3D_H}`}
             preserveAspectRatio="none">
             <Defs>
-              {/* Gradiente de cielo realista con atmósfera */}
               <LinearGradient id="realisticSkyGrad" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#0369A1" />
-                <Stop offset="0.48" stopColor="#0EA5E9" />
+                <Stop offset="0" stopColor="#0284C7" />
+                <Stop offset="0.45" stopColor="#0EA5E9" />
                 <Stop offset="0.82" stopColor="#7DD3FC" />
                 <Stop offset="1" stopColor="#E0F2FE" />
               </LinearGradient>
 
-              {/* Resplandor solar en el cielo */}
-              <RadialGradient id="sunGlowGrad" cx="0.78" cy="0.22" r="0.25">
+              <RadialGradient id="sunGlowGrad" cx="0.78" cy="0.22" r="0.26">
                 <Stop offset="0" stopColor="#FEF08A" stopOpacity="0.95" />
                 <Stop offset="0.35" stopColor="#FDE047" stopOpacity="0.45" />
                 <Stop offset="1" stopColor="#38BDF8" stopOpacity="0" />
               </RadialGradient>
 
-              {/* Terreno ecológico exterior con profundidad */}
               <LinearGradient id="realisticGrassGrad" x1="0" y1="0" x2="0" y2="1">
                 <Stop offset="0" stopColor="#15803D" />
                 <Stop offset="0.35" stopColor="#166534" />
                 <Stop offset="1" stopColor="#052E16" />
               </LinearGradient>
 
-              {/* Base de asfalto multicapa realista */}
               <LinearGradient id="asphaltRoadGrad" x1="0" y1="0" x2="0" y2="1">
                 <Stop offset="0" stopColor="#475569" />
-                <Stop offset="0.35" stopColor="#334155" />
-                <Stop offset="0.75" stopColor="#1E293B" />
+                <Stop offset="0.32" stopColor="#334155" />
+                <Stop offset="0.72" stopColor="#1E293B" />
                 <Stop offset="1" stopColor="#0F172A" />
               </LinearGradient>
 
-              {/* Capó delantero esculpido en 3D */}
               <LinearGradient id="hoodMetallicGrad" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#F8FAFC" />
+                <Stop offset="0" stopColor="#FFFFFF" />
                 <Stop offset="0.5" stopColor="#E2E8F0" />
                 <Stop offset="1" stopColor="#94A3B8" />
               </LinearGradient>
 
-              {/* Salpicadero de fibra/cuero oscuro en 1ª persona */}
+              <RadialGradient id="sunHaloGrad" cx="0.5" cy="0.5" r="0.5">
+                <Stop offset="0" stopColor="#FFFBEB" stopOpacity="1" />
+                <Stop offset="0.18" stopColor="#FEF08A" stopOpacity="0.85" />
+                <Stop offset="0.55" stopColor="#FDE047" stopOpacity="0.22" />
+                <Stop offset="1" stopColor="#FDE047" stopOpacity="0" />
+              </RadialGradient>
+
+              <LinearGradient id="hazeGrad" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#E0F2FE" stopOpacity="0.75" />
+                <Stop offset="0.35" stopColor="#BAE6FD" stopOpacity="0.3" />
+                <Stop offset="1" stopColor="#BAE6FD" stopOpacity="0" />
+              </LinearGradient>
+
+              <RadialGradient id="vignetteGrad" cx="0.5" cy="0.5" r="0.75">
+                <Stop offset="0.55" stopColor="#000000" stopOpacity="0" />
+                <Stop offset="1" stopColor="#020617" stopOpacity="0.62" />
+              </RadialGradient>
+
+              <LinearGradient id="beamGrad" x1="0" y1="1" x2="0" y2="0">
+                <Stop offset="0" stopColor="#FEF9C3" stopOpacity="0.5" />
+                <Stop offset="1" stopColor="#FEF9C3" stopOpacity="0.04" />
+              </LinearGradient>
+
               <LinearGradient id="cockpitDashGrad" x1="0" y1="0" x2="0" y2="1">
                 <Stop offset="0" stopColor="#1E293B" />
                 <Stop offset="0.35" stopColor="#0F172A" />
@@ -1416,63 +1991,49 @@ export default function ManeuversSimulatorScreen() {
               </LinearGradient>
             </Defs>
 
-            {/* 1. CIELO REALISTA, SOL, CORDILLERA Y HORIZONTE URBANO */}
-            <Rect x={0} y={0} width={VIEW3D_W} height={HORIZON_Y} fill="url(#realisticSkyGrad)" />
-            <Rect x={0} y={0} width={VIEW3D_W} height={HORIZON_Y} fill="url(#sunGlowGrad)" />
-            <Circle cx={748} cy={32} r={18} fill="#FEF9C3" />
+            {/* CÁMARA 3D: balanceo lateral (roll) real aplicado a todo el entorno exterior */}
+            <G
+              transform={`translate(${VIEW3D_W / 2}, 230) rotate(${(carState.camRollDeg * 0.7).toFixed(2)}) scale(1.07) translate(${-VIEW3D_W / 2}, -230)`}>
+            {/* 1. CIELO REALISTA, SOL Y CORDILLERA CON PARALAJE */}
+            <Rect x={-80} y={-40} width={VIEW3D_W + 160} height={HORIZON_Y + 40} fill="url(#realisticSkyGrad)" />
+            <Circle cx={sunScreenX} cy={sunScreenY} r={105} fill="url(#sunHaloGrad)" />
+            <Circle cx={sunScreenX} cy={sunScreenY} r={17} fill="#FFFBEB" />
 
-            {/* Cordillera lejana con perspectiva atmosférica */}
-            <Path
-              d={`M 0 ${HORIZON_Y} L 95 ${HORIZON_Y - 48} L 210 ${HORIZON_Y - 22} L 345 ${HORIZON_Y - 58} L 490 ${HORIZON_Y - 18} L 640 ${HORIZON_Y - 52} L 790 ${HORIZON_Y - 26} L ${VIEW3D_W} ${HORIZON_Y - 44} L ${VIEW3D_W} ${HORIZON_Y} Z`}
-              fill="#0284C7"
-              opacity={0.35}
-            />
-            <Path
-              d={`M 0 ${HORIZON_Y} Q 180 ${HORIZON_Y - 38} 360 ${HORIZON_Y - 14} T 720 ${HORIZON_Y - 34} T ${VIEW3D_W} ${HORIZON_Y - 18} L ${VIEW3D_W} ${HORIZON_Y} Z`}
-              fill="#15803D"
-              opacity={0.82}
-            />
-
-            {/* Skyline 3D con edificios sombreados y complejo AutoTest */}
-            <G transform={`translate(${-horizonPanOffset * 0.65}, 0)`}>
-              {/* Nubes volumétricas */}
-              <Ellipse cx={180} cy={30} rx={64} ry={14} fill="rgba(255,255,255,0.82)" />
-              <Ellipse cx={215} cy={25} rx={45} ry={16} fill="rgba(255,255,255,0.9)" />
-              <Ellipse cx={540} cy={34} rx={72} ry={14} fill="rgba(255,255,255,0.78)" />
-
-              {/* Edificio 3D 1 con cara iluminada y cara en sombra */}
-              <Rect x={70} y={22} width={68} height={HORIZON_Y - 22} fill="#CBD5E1" stroke="#475569" strokeWidth={1} />
-              <Rect x={138} y={22} width={24} height={HORIZON_Y - 22} fill="#64748B" stroke="#475569" strokeWidth={1} />
-              {[34, 48, 62, 76, 90, 104, 118].map((wy) => (
-                <Line key={wy} x1={76} y1={wy} x2={130} y2={wy} stroke="#38BDF8" strokeWidth={3.5} strokeDasharray="8 4" />
-              ))}
-
-              {/* Torre Corporativa 3D 2 */}
-              <Rect x={210} y={10} width={86} height={HORIZON_Y - 10} fill="#94A3B8" stroke="#334155" strokeWidth={1} />
-              <Rect x={296} y={10} width={28} height={HORIZON_Y - 10} fill="#475569" stroke="#334155" strokeWidth={1} />
-              {[22, 36, 50, 64, 78, 92, 106, 120].map((wy) => (
-                <Line key={wy} x1={218} y1={wy} x2={288} y2={wy} stroke="#E0F2FE" strokeWidth={3} strokeDasharray="10 4" />
-              ))}
-
-              {/* Sede Central Centro de Evaluación Vial AutoTest */}
-              <Rect x={390} y={84} width={230} height={52} fill="#1E293B" stroke="#0F172A" strokeWidth={1.5} />
-              <Rect x={384} y={76} width={242} height={16} rx={3} fill="#EF4444" stroke="#FFFFFF" strokeWidth={1.2} />
-              <SvgText x={505} y={88} fill="#FFFFFF" fontSize="10.5" fontWeight="bold" textAnchor="middle">
-                CENTRO VIAL • AUTOTEST 3D
-              </SvgText>
-
-              {/* Torres Derecha */}
-              <Rect x={680} y={18} width={92} height={HORIZON_Y - 18} fill="#CBD5E1" stroke="#475569" strokeWidth={1} />
-              <Rect x={772} y={18} width={28} height={HORIZON_Y - 18} fill="#64748B" stroke="#475569" strokeWidth={1} />
-              <Rect x={835} y={28} width={88} height={HORIZON_Y - 28} fill="#94A3B8" stroke="#334155" strokeWidth={1} />
+            <G transform={`translate(${-skyPanSmooth * 0.22}, 0)`}>
+              <Path
+                d={`M -320 ${HORIZON_Y} L -220 ${HORIZON_Y - 36} L -80 ${HORIZON_Y - 58} L 95 ${HORIZON_Y - 48} L 210 ${HORIZON_Y - 22} L 345 ${HORIZON_Y - 58} L 490 ${HORIZON_Y - 18} L 640 ${HORIZON_Y - 52} L 790 ${HORIZON_Y - 26} L ${VIEW3D_W} ${HORIZON_Y - 44} L ${VIEW3D_W + 160} ${HORIZON_Y - 60} L ${VIEW3D_W + 320} ${HORIZON_Y - 30} L ${VIEW3D_W + 320} ${HORIZON_Y} Z`}
+                fill="#0369A1"
+                opacity={0.34}
+              />
             </G>
+            <G transform={`translate(${-skyPanSmooth * 0.4}, 0)`}>
+              <Path
+                d={`M -340 ${HORIZON_Y} Q -160 ${HORIZON_Y - 40} 0 ${HORIZON_Y - 22} Q 180 ${HORIZON_Y - 44} 360 ${HORIZON_Y - 14} T 720 ${HORIZON_Y - 32} T ${VIEW3D_W + 340} ${HORIZON_Y - 18} L ${VIEW3D_W + 340} ${HORIZON_Y} Z`}
+                fill="#15803D"
+                opacity={0.85}
+              />
+            </G>
+
+            {/* Nubes con deriva lenta del viento y paralaje al girar */}
+            {[0, -1].map((k) => (
+              <G
+                key={`cloud-${k}`}
+                transform={`translate(${cloudBase + k * CLOUD_PERIOD}, 0)`}>
+                <Ellipse cx={180} cy={28} rx={64} ry={13} fill="rgba(255,255,255,0.82)" />
+                <Ellipse cx={215} cy={24} rx={45} ry={15} fill="rgba(255,255,255,0.9)" />
+                <Ellipse cx={540} cy={32} rx={72} ry={13} fill="rgba(255,255,255,0.78)" />
+                <Ellipse cx={575} cy={27} rx={44} ry={12} fill="rgba(255,255,255,0.88)" />
+                <Ellipse cx={880} cy={22} rx={58} ry={11} fill="rgba(255,255,255,0.7)" />
+                <Ellipse cx={1010} cy={46} rx={50} ry={10} fill="rgba(255,255,255,0.6)" />
+              </G>
+            ))}
 
             {/* 2. PISO REALISTA MULTICAPA: PRADERA + BASE ASFÁLTICA + LOSAS EN PERSPECTIVA 3D */}
             <Rect
-              x={0}
+              x={-80}
               y={HORIZON_Y}
-              width={VIEW3D_W}
-              height={VIEW3D_H - HORIZON_Y}
+              width={VIEW3D_W + 160}
+              height={VIEW3D_H - HORIZON_Y + 40}
               fill="url(#realisticGrassGrad)"
             />
 
@@ -1480,7 +2041,7 @@ export default function ManeuversSimulatorScreen() {
               <Polygon
                 points={world3D.asphaltBase.pointsStr}
                 fill="url(#asphaltRoadGrad)"
-                stroke="#94A3B8"
+                stroke="#CBD5E1"
                 strokeWidth={2}
               />
             ) : null}
@@ -1491,30 +2052,51 @@ export default function ManeuversSimulatorScreen() {
                 key={`tile-${idx}`}
                 points={t.pointsStr}
                 fill={t.shade}
-                stroke="rgba(15, 23, 42, 0.35)"
-                strokeWidth={0.8}
+                stroke="rgba(15, 23, 42, 0.42)"
+                strokeWidth={0.9}
               />
             ))}
 
-            {/* Bordillos perimetrales 3D Rojos y Blancos */}
-            {world3D.curbPolys.map((cb, idx) => (
+            {/* Bordillos perimetrales 3D extruidos (rojos y blancos con volumen vertical) */}
+            {world3D.curbBoxes.map((cb, idx) => (
               <Polygon
                 key={`curb-${idx}`}
                 points={cb.pointsStr}
-                fill={cb.color}
-                stroke="#0F172A"
+                fill={cb.fill}
+                stroke={cb.stroke}
                 strokeWidth={0.6}
               />
             ))}
 
+            {/* Doble línea central amarilla */}
+            {world3D.yellowDividerLines.map((pts, i) => (
+              <Polygon key={`ydiv-${i}`} points={pts} fill="#FACC15" />
+            ))}
+
             {/* Marcas viales blancas (carriles, bahías y paso cebra) */}
             {world3D.whiteLaneDashes.map((pts, i) => (
-              <Polygon key={`lane-${i}`} points={pts} fill="rgba(248, 250, 252, 0.82)" />
+              <Polygon key={`lane-${i}`} points={pts} fill="rgba(248, 250, 252, 0.86)" />
             ))}
+
+            {/* Haces de luz proyectados por los faros sobre el pavimento */}
+            {lightsOn
+              ? world3D.headlightBeams.map((pts, i) => (
+                  <Polygon key={`beam-${i}`} points={pts} fill="rgba(254, 249, 195, 0.2)" />
+                ))
+              : null}
+
+            {/* Bruma atmosférica de distancia sobre el piso (profundidad y realismo) */}
+            <Rect
+              x={-80}
+              y={world3D.horizonDynamicY - 6}
+              width={VIEW3D_W + 160}
+              height={70}
+              fill="url(#hazeGrad)"
+            />
 
             {/* 3. HUELLAS REALISTAS DE NEUMÁTICOS */}
             {world3D.projectedTracks.map((pts, i) => (
-              <Polygon key={`trk-${i}`} points={pts} fill="rgba(2, 6, 23, 0.45)" />
+              <Polygon key={`trk-${i}`} points={pts} fill="rgba(2, 6, 23, 0.48)" />
             ))}
 
             {/* 4. FLECHAS DIRECCIONALES AMARILLAS EN EL PISO */}
@@ -1524,16 +2106,16 @@ export default function ManeuversSimulatorScreen() {
                 points={pts}
                 fill="#FACC15"
                 stroke="#CA8A04"
-                strokeWidth={1.2}
+                strokeWidth={1.3}
               />
             ))}
 
-            {/* 5. ZONA AZUL OFICIAL DE PARQUEO [ P ] */}
+            {/* 5. ZONA AZUL OFICIAL DE PARQUEO [ P ] CON TOPE DE LLANTAS 3D */}
             {world3D.blueParkingBox ? (
               <G>
                 <Polygon
                   points={world3D.blueParkingBox.pointsStr}
-                  fill={parkedSuccess ? 'rgba(16, 185, 129, 0.88)' : 'rgba(2, 132, 199, 0.85)'}
+                  fill={parkedSuccess ? 'rgba(16, 185, 129, 0.9)' : 'rgba(2, 132, 199, 0.86)'}
                   stroke="#FFFFFF"
                   strokeWidth={3.5}
                 />
@@ -1548,6 +2130,18 @@ export default function ManeuversSimulatorScreen() {
                 </SvgText>
               </G>
             ) : null}
+
+            {world3D.wheelStop3D
+              ? world3D.wheelStop3D.faces.map((f, i) => (
+                  <Polygon
+                    key={`wstop-${i}`}
+                    points={f.pointsStr}
+                    fill={f.fill}
+                    stroke={f.stroke}
+                    strokeWidth={0.8}
+                  />
+                ))
+              : null}
 
             {/* 6. POSTE Y SEÑAL VERTICAL [ P ] */}
             {world3D.signBase && world3D.signTop ? (
@@ -1582,17 +2176,43 @@ export default function ManeuversSimulatorScreen() {
               </G>
             ) : null}
 
-            {/* 7. ELEMENTOS 3D VOLUMÉTRICOS: ÁRBOLES REALISTAS, FAROLAS VIALES Y CONOS SOMBREADOS */}
+            {/* 7. ELEMENTOS 3D VOLUMÉTRICOS: EDIFICIOS 3D, CARROS ESTACIONADOS 3D, ÁRBOLES, FAROLAS Y CONOS */}
             {world3D.renderItems.map((item, idx) => {
-              if (item.type === 'TREE' && item.tree) {
+              if (item.type === 'BOX3D' && item.faces) {
+                return (
+                  <G key={`box3d-${idx}`}>
+                    {item.faces.map((f, fIdx) => (
+                      <G key={`face-${fIdx}`}>
+                        <Polygon
+                          points={f.pointsStr}
+                          fill={f.fill}
+                          stroke={f.stroke}
+                          strokeWidth={1}
+                        />
+                        {f.label && f.labelX !== undefined && f.labelY !== undefined ? (
+                          <SvgText
+                            x={f.labelX}
+                            y={f.labelY + 3}
+                            fill="#FFFFFF"
+                            fontSize="9.5"
+                            fontWeight="bold"
+                            textAnchor="middle">
+                            {f.label}
+                          </SvgText>
+                        ) : null}
+                      </G>
+                    ))}
+                  </G>
+                );
+              }
+
+              if (item.type === 'TREE' && item.tree && item.sx !== undefined && item.sy !== undefined && item.scale !== undefined) {
                 const s = Math.max(0.24, Math.min(2.4, item.scale * 0.62));
                 const tx = item.sx;
                 const ty = item.sy;
                 return (
                   <G key={`tree-${idx}`}>
-                    {/* Sombra proyectada sobre el terreno */}
                     <Ellipse cx={tx + 4 * s} cy={ty + 2 * s} rx={24 * s} ry={8 * s} fill="rgba(2, 6, 23, 0.42)" />
-                    {/* Tronco con corteza sombreada */}
                     <Rect
                       x={tx - 5 * s}
                       y={ty - 36 * s}
@@ -1608,17 +2228,19 @@ export default function ManeuversSimulatorScreen() {
                       height={37 * s}
                       fill="#92400E"
                     />
-                    {/* Follaje volumétrico en 4 capas (sombra base, tono medio e iluminación solar) */}
-                    <Circle cx={tx} cy={ty - 40 * s} r={22 * s} fill={item.tree.canopyDark} />
-                    <Circle cx={tx - 13 * s} cy={ty - 34 * s} r={15 * s} fill={item.tree.canopyMid} />
-                    <Circle cx={tx + 12 * s} cy={ty - 34 * s} r={15 * s} fill={item.tree.canopyDark} />
-                    <Circle cx={tx - 3 * s} cy={ty - 46 * s} r={16 * s} fill={item.tree.canopyMid} />
-                    <Circle cx={tx - 6 * s} cy={ty - 50 * s} r={11 * s} fill={item.tree.canopyLight} />
+                    <G transform={`translate(${(windSwayPx * s * 0.7).toFixed(2)}, 0)`}>
+                      <Circle cx={tx} cy={ty - 40 * s} r={22 * s} fill={item.tree.canopyDark} />
+                      <Circle cx={tx - 13 * s} cy={ty - 34 * s} r={15 * s} fill={item.tree.canopyMid} />
+                      <Circle cx={tx + 12 * s} cy={ty - 34 * s} r={15 * s} fill={item.tree.canopyDark} />
+                      <Circle cx={tx - 3 * s} cy={ty - 46 * s} r={16 * s} fill={item.tree.canopyMid} />
+                      <Circle cx={tx - 6 * s} cy={ty - 50 * s} r={11 * s} fill={item.tree.canopyLight} />
+                      <Circle cx={tx + 8 * s} cy={ty - 52 * s} r={7 * s} fill={item.tree.canopyLight} opacity={0.55} />
+                    </G>
                   </G>
                 );
               }
 
-              if (item.type === 'LAMP') {
+              if (item.type === 'LAMP' && item.sx !== undefined && item.sy !== undefined && item.scale !== undefined) {
                 const s = Math.max(0.25, Math.min(2.1, item.scale * 0.65));
                 const lx = item.sx;
                 const ly = item.sy;
@@ -1641,6 +2263,13 @@ export default function ManeuversSimulatorScreen() {
                       stroke="#CBD5E1"
                       strokeWidth={2.5 * s}
                     />
+                    <Circle
+                      cx={lx + 19 * s}
+                      cy={ly - 71 * s}
+                      r={16 * s}
+                      fill="rgba(254, 240, 138, 0.28)"
+                      opacity={beaconPulse}
+                    />
                     <Ellipse
                       cx={lx + 19 * s}
                       cy={ly - 71 * s}
@@ -1652,6 +2281,10 @@ export default function ManeuversSimulatorScreen() {
                 );
               }
 
+              if (item.sx === undefined || item.sy === undefined || item.scale === undefined) {
+                return null;
+              }
+
               // Cono 3D con sombreado lateral y bandas reflectivas
               const s = Math.max(0.32, Math.min(1.9, item.scale * 0.48));
               const cx = item.sx;
@@ -1661,14 +2294,12 @@ export default function ManeuversSimulatorScreen() {
                   key={`cone-${idx}`}
                   transform={item.coneHit ? `rotate(32, ${cx}, ${cy})` : undefined}>
                   <Ellipse cx={cx + 3 * s} cy={cy + 2 * s} rx={16 * s} ry={6 * s} fill="rgba(2, 6, 23, 0.45)" />
-                  {/* Base cuadrada 3D del cono */}
                   <Polygon
                     points={`${cx - 15 * s},${cy} ${cx},${cy - 5 * s} ${cx + 15 * s},${cy} ${cx},${cy + 5 * s}`}
                     fill="#C2410C"
                     stroke="#7C2D12"
                     strokeWidth={0.8}
                   />
-                  {/* Cuerpo cónico mitad iluminada / mitad sombra */}
                   <Polygon
                     points={`${cx - 11 * s},${cy} ${cx - 3.2 * s},${cy - 35 * s} ${cx},${cy - 35 * s} ${cx},${cy}`}
                     fill="#FB923C"
@@ -1677,7 +2308,6 @@ export default function ManeuversSimulatorScreen() {
                     points={`${cx},${cy} ${cx},${cy - 35 * s} ${cx + 3.2 * s},${cy - 35 * s} ${cx + 11 * s},${cy}`}
                     fill="#EA580C"
                   />
-                  {/* Bandas reflectivas blancas */}
                   <Polygon
                     points={`${cx - 8.8 * s},${cy - 8 * s} ${cx - 6.8 * s},${cy - 15 * s} ${cx + 6.8 * s},${cy - 15 * s} ${cx + 8.8 * s},${cy - 8 * s}`}
                     fill="#F8FAFC"
@@ -1690,19 +2320,33 @@ export default function ManeuversSimulatorScreen() {
               );
             })}
 
-            {/* ==================== CABINA EN 1ª PERSONA SIN RETROVISORES (VISTA AMPLIA Y DESPEJADA) ==================== */}
-            {/* CAPÓ DELANTERO ESCULPIDO EN 3D */}
+            </G>
+
+            {/* Viñeta cinematográfica: se intensifica con la velocidad */}
+            <Rect
+              x={0}
+              y={0}
+              width={VIEW3D_W}
+              height={VIEW3D_H}
+              fill="url(#vignetteGrad)"
+              opacity={0.55 + Math.min(0.45, Math.abs(carState.speed) / 220)}
+            />
+
+            {/* ==================== CABINA EN 1ª PERSONA SIN RETROVISORES ==================== */}
+            {/* CAPÓ DELANTERO ESCULPIDO EN 3D CON GUARDABARROS Y REFLEJO SOLAR */}
             <G transform={`translate(${steerAngleDeg * -0.45}, ${gasActive ? -2.5 : brakeActive ? 3.5 : 0})`}>
               <Polygon
-                points={`165,328 275,266 685,266 795,328`}
+                points={`145,328 265,262 695,262 815,328`}
                 fill="url(#hoodMetallicGrad)"
                 stroke="#94A3B8"
                 strokeWidth={2}
               />
-              {/* Nervaduras aerodinámicas del capó */}
-              <Line x1={255} y1={324} x2={325} y2={270} stroke="#CBD5E1" strokeWidth={2.5} />
-              <Line x1={705} y1={324} x2={635} y2={270} stroke="#CBD5E1" strokeWidth={2.5} />
-              <Ellipse cx={480} cy={278} rx={14} ry={4.5} fill="#38BDF8" stroke="#0F172A" strokeWidth={1} />
+              {/* Relieve lateral izquierdo y derecho del capó */}
+              <Polygon points="145,328 265,262 315,266 235,328" fill="#E2E8F0" />
+              <Polygon points="815,328 695,262 645,266 725,328" fill="#CBD5E1" />
+              <Line x1={245} y1={324} x2={318} y2={266} stroke="#94A3B8" strokeWidth={2} />
+              <Line x1={715} y1={324} x2={642} y2={266} stroke="#94A3B8" strokeWidth={2} />
+              <Ellipse cx={480} cy={274} rx={15} ry={4.5} fill="#38BDF8" stroke="#0F172A" strokeWidth={1.2} />
             </G>
 
             {/* LIMPIAPARABRISAS ANIMADOS */}
@@ -1713,10 +2357,10 @@ export default function ManeuversSimulatorScreen() {
               <Line x1={610} y1={326} x2={465} y2={296} stroke="#0F172A" strokeWidth={4.5} strokeLinecap="round" />
             </G>
 
-            {/* PARALES DELANTEROS (PILARES A) ESTILIZADOS EN LOS BORDES DEL PARABRISAS */}
-            <Polygon points="0,0 58,0 24,335 0,335" fill="#0F172A" stroke="#334155" strokeWidth={2} />
+            {/* PARALES DELANTEROS (PILARES A) ESTILIZADOS */}
+            <Polygon points="0,0 54,0 22,335 0,335" fill="#0F172A" stroke="#334155" strokeWidth={2} />
             <Polygon
-              points={`${VIEW3D_W},0 ${VIEW3D_W - 58},0 ${VIEW3D_W - 24},335 ${VIEW3D_W},335`}
+              points={`${VIEW3D_W},0 ${VIEW3D_W - 54},0 ${VIEW3D_W - 22},335 ${VIEW3D_W},335`}
               fill="#0F172A"
               stroke="#334155"
               strokeWidth={2}
@@ -2247,25 +2891,96 @@ export default function ManeuversSimulatorScreen() {
             </View>
           </View>
 
-          {/* MODAL DE ÉXITO AL ESTACIONAR DENTRO DE LA ZONA AZUL [P] */}
+          {/* ==================== LETRERO DE NIVEL COMPLETADO Y CONTINUAR AL SIGUIENTE NIVEL ==================== */}
           {parkedSuccess ? (
             <View style={styles.successOverlay}>
               <View style={styles.successModalCard}>
-                <Ionicons name="checkmark-done-circle" size={44} color={PsychoPalette.mint} />
-                <Text style={styles.successModalTitle}>¡PRUEBA DE CONDUCCIÓN 3D SUPERADA!</Text>
+                <View style={styles.levelBadgeHeader}>
+                  <Ionicons name="trophy" size={18} color="#020617" />
+                  <Text style={styles.levelBadgeHeaderText}>
+                    NIVEL {currentLevelIdx + 1} DE {SCENARIOS.length} COMPLETADO • {lastGrade}
+                  </Text>
+                </View>
+
+                <Text style={styles.successModalTitle}>
+                  ¡{scenario.shortLabel} SUPERADO CON ÉXITO!
+                </Text>
+
+                {/* Indicador visual de progreso entre los 3 niveles */}
+                <View style={styles.levelStepperRow}>
+                  {SCENARIOS.map((sc, idx) => {
+                    const isDone = completedLevelIds.includes(sc.id) || sc.id === scenario.id;
+                    const isNext = nextScenario?.id === sc.id;
+                    return (
+                      <View
+                        key={sc.id}
+                        style={[
+                          styles.levelStepChip,
+                          isDone && styles.levelStepChipDone,
+                          isNext && styles.levelStepChipNext,
+                        ]}>
+                        <Ionicons
+                          name={isDone ? 'checkmark-circle' : isNext ? 'play-circle' : 'ellipse-outline'}
+                          size={12}
+                          color={isDone ? '#020617' : isNext ? PsychoPalette.cyan : '#94A3B8'}
+                        />
+                        <Text
+                          style={[
+                            styles.levelStepChipText,
+                            isDone && { color: '#020617', fontWeight: '900' },
+                            isNext && { color: PsychoPalette.cyan },
+                          ]}>
+                          NIVEL {idx + 1}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+
                 <Text style={styles.successModalDesc}>
-                  Estacionó correctamente dentro de la Zona [P] en {elapsedSec.toFixed(1)}s con{' '}
+                  Estacionó dentro de la Zona Oficial [P] en {elapsedSec.toFixed(1)}s con{' '}
                   {collisions} {collisions === 1 ? 'cono tocado' : 'conos tocados'}.
                 </Text>
+
+                {/* Botón Principal: CONTINUAR AL SIGUIENTE NIVEL */}
+                {nextScenario ? (
+                  <Pressable onPress={handleContinueNextLevel} style={styles.nextLevelPrimarySign}>
+                    <View style={styles.nextLevelSignLeft}>
+                      <Text style={styles.nextLevelSmallTag}>SIGUIENTE PRUEBA DISPONIBLE</Text>
+                      <Text style={styles.nextLevelMainText}>
+                        CONTINUAR AL SIGUIENTE NIVEL ({nextScenario.shortLabel})
+                      </Text>
+                    </View>
+                    <Ionicons name="arrow-forward-circle" size={28} color="#020617" />
+                  </Pressable>
+                ) : (
+                  <Pressable onPress={() => router.push('/')} style={styles.nextLevelPrimarySign}>
+                    <View style={styles.nextLevelSignLeft}>
+                      <Text style={styles.nextLevelSmallTag}>¡3 DE 3 NIVELES COMPLETADOS!</Text>
+                      <Text style={styles.nextLevelMainText}>
+                        FINALIZAR PRUEBA Y VER RESULTADOS EN TABLERO
+                      </Text>
+                    </View>
+                    <Ionicons name="checkmark-done-circle" size={28} color="#020617" />
+                  </Pressable>
+                )}
+
                 <View style={styles.successModalActions}>
                   <Pressable onPress={() => resetScenario(scenario)} style={styles.modalRepeatBtn}>
-                    <Ionicons name="refresh" size={14} color={PsychoPalette.bgPrimary} />
-                    <Text style={styles.modalBtnText}>REPETIR NIVEL</Text>
+                    <Ionicons name="refresh" size={13} color={PsychoPalette.textPrimary} />
+                    <Text style={styles.modalSecondaryBtnText}>REPETIR NIVEL {currentLevelIdx + 1}</Text>
                   </Pressable>
-                  <Pressable onPress={() => router.push('/')} style={styles.modalDashboardBtn}>
-                    <Text style={styles.modalBtnText}>VER BAREMOS EN TABLERO</Text>
-                    <Ionicons name="arrow-forward" size={14} color={PsychoPalette.bgPrimary} />
-                  </Pressable>
+                  {nextScenario ? (
+                    <Pressable onPress={() => router.push('/')} style={styles.modalDashboardBtn}>
+                      <Text style={styles.modalSecondaryBtnText}>IR AL MENÚ PRINCIPAL</Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      onPress={() => handleSelectScenario(SCENARIOS[0])}
+                      style={styles.modalDashboardBtn}>
+                      <Text style={styles.modalSecondaryBtnText}>VOLVER AL NIVEL 1</Text>
+                    </Pressable>
+                  )}
                 </View>
               </View>
             </View>
@@ -2656,39 +3371,115 @@ const styles = StyleSheet.create({
   },
   successOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(5, 9, 20, 0.86)',
+    backgroundColor: 'rgba(2, 6, 23, 0.88)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 18,
+    padding: 14,
   },
   successModalCard: {
     backgroundColor: PsychoPalette.bgSecondary,
     borderRadius: 16,
     borderWidth: 2,
     borderColor: PsychoPalette.mint,
-    padding: 18,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
     alignItems: 'center',
     gap: 8,
-    maxWidth: 420,
+    maxWidth: 480,
     width: '100%',
   },
+  levelBadgeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: PsychoPalette.mint,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  levelBadgeHeaderText: {
+    color: '#020617',
+    fontSize: 9.5,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
   successModalTitle: {
-    color: PsychoPalette.mint,
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '900',
     fontFamily: Fonts.mono,
     textAlign: 'center',
   },
+  levelStepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginVertical: 2,
+  },
+  levelStepChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  levelStepChipDone: {
+    backgroundColor: PsychoPalette.mint,
+    borderColor: '#FFFFFF',
+  },
+  levelStepChipNext: {
+    borderColor: PsychoPalette.cyan,
+    backgroundColor: 'rgba(56, 189, 248, 0.14)',
+  },
+  levelStepChipText: {
+    color: '#94A3B8',
+    fontSize: 8.5,
+    fontWeight: '800',
+    fontFamily: Fonts.mono,
+  },
   successModalDesc: {
     color: PsychoPalette.textSecondary,
-    fontSize: 11.5,
+    fontSize: 11,
     textAlign: 'center',
-    lineHeight: 17,
+    lineHeight: 16,
+  },
+  nextLevelPrimarySign: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: PsychoPalette.mint,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 2,
+  },
+  nextLevelSignLeft: {
+    flex: 1,
+    gap: 2,
+  },
+  nextLevelSmallTag: {
+    color: '#064E3B',
+    fontSize: 8,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  nextLevelMainText: {
+    color: '#020617',
+    fontSize: 11.5,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
   },
   successModalActions: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 4,
+    marginTop: 2,
     flexWrap: 'wrap',
     justifyContent: 'center',
   },
@@ -2696,24 +3487,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: PsychoPalette.cyan,
+    backgroundColor: PsychoPalette.bgPanel,
+    borderWidth: 1,
+    borderColor: PsychoPalette.borderSubtle,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 8,
   },
   modalDashboardBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: PsychoPalette.mint,
+    backgroundColor: PsychoPalette.bgPanel,
+    borderWidth: 1,
+    borderColor: PsychoPalette.borderSubtle,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 8,
   },
-  modalBtnText: {
-    color: PsychoPalette.bgPrimary,
-    fontSize: 10.5,
-    fontWeight: '900',
+  modalSecondaryBtnText: {
+    color: PsychoPalette.textPrimary,
+    fontSize: 9.5,
+    fontWeight: '800',
     fontFamily: Fonts.mono,
   },
 });

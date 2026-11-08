@@ -1,52 +1,89 @@
-# AutoTest Psicotécnico 2D — Simulador de Evaluación y Práctica de Conductores
+# AutoTest Psicotécnico & Simulador de Conducción 3D
 
-Aplicación móvil interactiva en **2D** desarrollada con **React Native y Expo (SDK 58)** orientada a la evaluación psicotécnica y entrenamiento práctico previo a la obtención o renovación de licencias de conducción.
+Aplicación móvil (Android, iOS y Web) hecha con **React Native + Expo (SDK 58)** para practicar y evaluar las pruebas previas a la obtención o renovación de una licencia de conducción: inspección preoperacional del vehículo, reacción auditiva, coordinación bimanual y maniobras de parqueo en un simulador 3D con cabina en primera persona.
 
-Diseñada bajo una estética de **Tablero de Control Profesional (AutoTest Psicotécnico)** con paleta oscura (azul marino profundo `#050A14` / `#0A1222` / `#0F1A2E`) y acentos de instrumentación en **verde menta (`#00F5A0`)** y **cian (`#00D9F5`)**.
+La interfaz usa un tablero oscuro (azul marino `#050A14`) con acentos verde menta `#00F5A0` y cian `#00D9F5`.
 
 ---
 
-## Pila Tecnológica (Stack)
+## ¿Qué hace?
 
-| Tecnología / Librería | Función Principal | Implementación en el Proyecto |
+El usuario recorre cuatro módulos. Cada uno guarda su resultado (nota y métricas) en un contexto global, y el tablero principal los resume junto con los baremos oficiales (`EXCELENTE`, `APTO`, `NO APTO`).
+
+| Módulo | Pantalla | Qué evalúa o enseña |
 | :--- | :--- | :--- |
-| **React Native + Expo (SDK 58)** | Framework Base | Ejecución multiplataforma fluida en Android, iOS y Web con motor Hermes y React Compiler. |
-| **Expo Router** | Enrutamiento y Navegación | Navegación basada en archivos dentro de `src/app/` (`index`, `reaction`, `lathe`, `maneuvers`). |
-| **expo-audio** *(sucesor oficial de `expo-av` en SDK 58)* + **expo-haptics** | Audio y Señales Acústicas | Reproducción de impulsos sonoros discriminados por mano (`440 Hz` Mano Izquierda, `880 Hz` Mano Derecha) con archivos PCM `.wav` generados en `assets/sounds/`. |
-| **react-native-gesture-handler** | Control de Gestos Multitáctil | Manejo sin latencia de los dos anillos simultáneos del Torno Bimanual y del Joystick de dirección del vehículo 2D. |
-| **react-native-svg** | Renderizado Vectorial 2D | Trazado en tiempo real a 60 FPS de los carriles ondulados bimanuales y del circuito top-down con vehículo direccional. |
+| **Preoperacional** | `src/app/preoperational.tsx` | Laboratorio visual de 6 sistemas del carro: motor y fluidos, llantas (PSI), luces, espejos, cabina y kit de carretera. Para cada uno se ve el **problema**, se aplica la **solución** y se compara. Una **voz de fondo** resume qué pasa y cómo se soluciona, y arranca sola al iniciar cada lección. |
+| **01 · Reacción y audio** | `src/app/reaction.tsx` | Pantalla dividida con dos zonas táctiles (roja = mano izquierda, verde = mano derecha). Tonos de 440 Hz (izquierda) y 880 Hz (derecha), tiempo de reacción en ms, salidas en falso y modos audio+visual, solo audio y solo visual. Requiere audífonos. |
+| **02 · Torno bimanual** | `src/app/lathe.tsx` | Dos carriles ondulados que avanzan en vertical y dos cursores que se arrastran a la vez, uno por mano. Mide la precisión por carril y el tiempo fuera de pista. La **velocidad es adaptativa**: sube si el usuario conduce bien y baja si se sale. |
+| **03 · Maniobras 3D** | `src/app/maneuvers.tsx` | Simulador en primera persona con 3 niveles: parqueo en bahía a 90°, parqueo en paralelo y eslalon de conos. Cuenta tiempo, conos tocados y alineación con la zona `[P]`. |
 
 ---
 
-## Estructura de Pantallas y Módulos (`src/app/`)
+## Simulador 3D (módulo de maniobras)
 
-1. **Pantalla 1: Menú Principal / Dashboard (`src/app/index.tsx`)**
-   - Telemetría superior en tiempo real con **Latencia de Audio (`ms`)** y **Frecuencia de Cuadros (`FPS`)**.
-   - Tres tarjetas visuales de gran tamaño con acceso directo a cada prueba y estado de calificación de la sesión.
-   - Panel inferior con el **Resumen de Baremos Oficiales Psicotécnicos** (`EXCELENTE`, `APTO OFICIAL`, `NO APTO`).
-2. **Pantalla 2: Prueba de Reacción y Audio (`src/app/reaction.tsx`)**
-   - Interfaz de **Pantalla Dividida** con dos rectángulos táctiles de gran tamaño (**Rojo** para Mano Izquierda y **Verde** para Mano Derecha).
-   - **Alertas discriminadas por mano** mediante tonos de `440 Hz` (canal izquierdo) y `880 Hz` (canal derecho), medición en milisegundos, detección de salidas en falso y modos `AUDIO + VISUAL`, `SOLO AUDIO` y `SOLO VISUAL`.
-3. **Pantalla 3: Prueba del Torno — Coordinación Bimanual (`src/app/lathe.tsx`)**
-   - **Dos carriles verticales ondulados** asimétricos en desplazamiento continuo.
-   - **Dos círculos arrastrables simultáneos** mediante `Gesture.Pan()` independiente por hemisferio.
-   - Panel en tiempo real de **Precisión (`%`)**, **Velocidad (`px/s`)** y tiempo fuera de pista.
-4. **Pantalla 4: Simulador de Maniobras 2D — Vista Superior (`src/app/maneuvers.tsx`)**
-   - **Vista de Pájaro (Top-Down)** de un circuito vial con **vehículo azul** (modelo cinemático con ruedas delanteras que giran según el ángulo de dirección) y **zona de parqueo claramente demarcada** (`P`).
-   - **Joystick de Control** en la esquina inferior izquierda para controlar el ángulo de giro de las ruedas (`-38°` a `+38°`).
-   - **Pedales de Control** en la esquina inferior derecha (**Freno / Reversa** y **Acelerador**) junto con selector de marcha (`D / R`).
+Todo el mundo 3D se proyecta manualmente en perspectiva y se dibuja como SVG, sin motor 3D externo.
+
+- **Cabina completa:** volante que se arrastra, caja de cambios manual en H (`R`, `N`, `1`–`5`), tres pedales independientes (embrague, freno, acelerador), freno de mano, direccionales, intermitentes, luces, limpiaparabrisas, cinturón, tacómetro y velocímetro.
+- **Física del vehículo:** modelo cinemático con aceleración gradual por marcha, suavizado del pedal para evitar tirones, freno de motor, ralentí y revoluciones según la velocidad.
+- **Cámara viva:** cabeceo al acelerar o frenar, balanceo en las curvas, retraso de la vista al girar y vibración leve según el pavimento.
+- **Entorno:** cielo con sol y halo, nubes con deriva, montañas con paralaje, bruma de distancia, viñeta que aumenta con la velocidad, edificios, pórtico, autos estacionados, árboles que se mecen, farolas con brillo, conos, flechas, paso cebra y huellas de neumáticos.
+- **Iluminación:** los faros proyectan haces de luz sobre el asfalto.
+- **Controles:** táctiles en el celular (la pantalla gira sola a horizontal) y teclado en web: `W/↑` acelerador, `S/↓` freno, `C/Shift` embrague, `A/D` o flechas para el volante y `1`–`5`, `R`, `N` para las marchas.
 
 ---
 
-## Ejecución del Proyecto
+## Pila tecnológica
+
+| Tecnología | Para qué se usa |
+| :--- | :--- |
+| **React Native 0.88 + Expo SDK 58 + React 19** | Base multiplataforma (Android, iOS, Web). |
+| **Expo Router** | Navegación por archivos en `src/app/` (`index`, `preoperational`, `reaction`, `lathe`, `maneuvers`). |
+| **react-native-svg** | Dibujo vectorial: escena 3D proyectada, carriles del torno e ilustraciones del preoperacional. |
+| **react-native-gesture-handler** | Gestos multitáctiles: volante, caja de cambios y los dos cursores del torno. |
+| **react-native-reanimated / worklets** | Animaciones fluidas. |
+| **expo-audio + expo-haptics** | Sonidos (`assets/sounds/*.wav`) y vibración al responder. |
+| **expo-speech** | Voz en español que narra cada lección del preoperacional. |
+| **expo-image** | Imagen de portada. |
+| **expo-symbols, @expo/vector-icons** | Iconografía. |
+| **TypeScript** | Tipado estático. |
+
+---
+
+## Estructura del proyecto
+
+```
+src/
+├── app/
+│   ├── _layout.tsx          # Navegación, tema oscuro y proveedor de evaluación
+│   ├── index.tsx            # Portada + tablero con telemetría, tarjetas y baremos
+│   ├── preoperational.tsx   # Inspección 360° con voz explicativa
+│   ├── reaction.tsx         # Prueba de reacción y audio
+│   ├── lathe.tsx            # Torno bimanual con velocidad adaptativa
+│   └── maneuvers.tsx        # Simulador 3D con cabina (3 niveles)
+├── components/
+│   └── telemetry-header.tsx # Encabezado con FPS, latencia de audio y botón de prueba
+├── context/
+│   └── evaluation-context.tsx  # Estado global de resultados de las 4 pruebas
+├── hooks/
+│   ├── use-psych-audio.ts   # Sonidos izquierda/derecha/éxito/error + háptica
+│   └── use-telemetry.ts     # Medición de FPS y estado del sistema
+└── constants/
+    └── theme.ts             # Paleta, tipografías y baremos oficiales
+assets/
+├── sounds/                  # Tonos .wav (440 Hz, 880 Hz, éxito, error)
+└── images/                  # Iconos y portada
+```
+
+---
+
+## Ejecución
 
 ```bash
-# Iniciar el servidor de desarrollo de Expo
-npx expo start
-
-# Verificar tipos de TypeScript
-npx tsc --noEmit
-
-# Ejecutar el linter oficial de Expo
-npx expo lint
+npm install                # instalar dependencias
+npx expo start             # servidor de desarrollo (QR para Expo Go, o presionar w para Web)
+npx expo run:android       # build de desarrollo nativo (si se usan módulos nativos)
+npx tsc --noEmit           # verificar tipos
+npx expo lint              # linter oficial de Expo
 ```
+
+> La app también corre en el navegador. Para el audio y la voz se necesita una interacción previa del usuario (un toque), por política de los navegadores.

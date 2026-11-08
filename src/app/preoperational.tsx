@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as Speech from 'expo-speech';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, {
   Circle,
@@ -37,6 +38,8 @@ interface LearningStation {
   solutionExplanation: string;
   solutionMetric: string;
   actionButtonLabel: string;
+  voiceSummary: string;
+  voiceSolvedConfirmation: string;
 }
 
 const STATIONS: LearningStation[] = [
@@ -56,6 +59,10 @@ const STATIONS: LearningStation[] = [
       'Con el motor en frío se completa el refrigerante entre las marcas MIN y MAX/FULL y se comprueba con la bayoneta que el aceite SAE 5W-30 esté en la zona reticulada.',
     solutionMetric: 'NIVEL: 100% FULL • TEMP: 88°C ESTABLE',
     actionButtonLabel: 'APLICAR SOLUCIÓN: RELLENAR REFRIGERANTE Y MEDIR ACEITE',
+    voiceSummary:
+      'Punto 1: Motor y fluidos. Qué pasa: el refrigerante está por debajo del mínimo y el motor puede recalentarse. Cómo se soluciona: con el motor en frío, rellene el refrigerante hasta la marca máxima y mida el nivel de aceite con la bayoneta.',
+    voiceSolvedConfirmation:
+      'Solución aplicada en motor: refrigerante en nivel máximo y aceite verificado a temperatura estable.',
   },
   {
     id: 'TIRES',
@@ -73,6 +80,10 @@ const STATIONS: LearningStation[] = [
       'Al inflar a 32 PSI en frío, la banda de rodadura apoya de forma plana y uniforme sobre el asfalto, garantizando agarre óptimo en curvas y frenado.',
     solutionMetric: 'MANÓMETRO: 32 PSI ÓPTIMO • HUELLA 100% UNIFORME',
     actionButtonLabel: 'APLICAR SOLUCIÓN: CALIBRAR AIRE DE LLANTA A 32 PSI',
+    voiceSummary:
+      'Punto 2: Llantas. Qué pasa: la llanta tiene baja presión con 21 P S I, deformando el caucho y alargando el frenado. Cómo se soluciona: calibre el aire a 32 P S I en frío para lograr un apoyo firme y uniforme.',
+    voiceSolvedConfirmation:
+      'Solución aplicada en llantas: presión calibrada a 32 P S I y labrado verificado.',
   },
   {
     id: 'LIGHTS',
@@ -90,6 +101,10 @@ const STATIONS: LearningStation[] = [
       'Ambos faros proyectan un haz simétrico regulado en altura, con direccionales ámbar intermitentes y luces de freno rojas de encendido instantáneo.',
     solutionMetric: '2 FAROLAS LED ACTIVAS • VISIBILIDAD: 100%',
     actionButtonLabel: 'APLICAR SOLUCIÓN: RESTABLECER Y ALINEAR LUCES DEL CARRO',
+    voiceSummary:
+      'Punto 3: Luces y farolas. Qué pasa: la farola derecha está apagada y reduce el 60 por ciento de la visibilidad. Cómo se soluciona: restablezca y alinee ambos faros delanteros y verifique direccionales y freno.',
+    voiceSolvedConfirmation:
+      'Solución aplicada en luces: doble haz delantero alineado y direccionales operativas al 100 por ciento.',
   },
   {
     id: 'MIRRORS',
@@ -107,6 +122,10 @@ const STATIONS: LearningStation[] = [
       'Se abren los espejos laterales (viendo solo un 10% del costado del carro y 90% del carril adyacente) y se centra el retrovisor interior hacia la luneta trasera completa.',
     solutionMetric: '3 ESPEJOS ALINEADOS • COBERTURA TRASERA 100%',
     actionButtonLabel: 'APLICAR SOLUCIÓN: GRADUAR LOS 3 ESPEJOS RETROVISORES',
+    voiceSummary:
+      'Punto 4: Espejos retrovisores. Qué pasa: los espejos laterales están cerrados y crean un punto ciego peligroso. Cómo se soluciona: gradúe los 3 espejos para cubrir los carriles vecinos y toda la ventana trasera.',
+    voiceSolvedConfirmation:
+      'Solución aplicada en espejos: visión panorámica graduada sin puntos ciegos.',
   },
   {
     id: 'CABIN',
@@ -124,6 +143,10 @@ const STATIONS: LearningStation[] = [
       'El cinturón queda ajustado sobre clavícula y cadera, la silla a distancia ergonómica de los pedales y el freno de mano bloquea firmemente el eje trasero.',
     solutionMetric: 'CINTURÓN ANCLADO OK • FRENO MANO FIRME',
     actionButtonLabel: 'APLICAR SOLUCIÓN: ABROCHAR CINTURÓN Y CALIBRAR FRENO',
+    voiceSummary:
+      'Punto 5: Cabina y mandos. Qué pasa: el cinturón está desabrochado y el freno de mano no tiene tensión. Cómo se soluciona: abroche el cinturón de 3 puntos hasta escuchar el clic y calibre el freno de mano.',
+    voiceSolvedConfirmation:
+      'Solución aplicada en cabina: cinturón de 3 puntos asegurado y freno de mano calibrado.',
   },
   {
     id: 'KIT',
@@ -141,6 +164,10 @@ const STATIONS: LearningStation[] = [
       'Extintor ABC recargado con aguja en verde, 2 señales reflectivas listas para ubicar a 30m y 50m, tacos de bloqueo, cruceta, gato hidráulico y botiquín.',
     solutionMetric: 'EXTINTOR EN VERDE (VIGENTE) • KIT PESV 100%',
     actionButtonLabel: 'APLICAR SOLUCIÓN: EQUIPAR EXTINTOR RECARGADO Y KIT VIAL',
+    voiceSummary:
+      'Punto 6: Kit de carretera. Qué pasa: el extintor está descargado en zona roja y faltan los triángulos reflectivos. Cómo se soluciona: equipe el extintor recargado en verde junto con 2 triángulos, botiquín y herramienta.',
+    voiceSolvedConfirmation:
+      'Solución aplicada en kit de carretera: extintor vigente en verde y equipo de emergencia completo.',
   },
 ];
 
@@ -161,10 +188,88 @@ export default function PreoperationalScreen() {
   // Permite alternar la vista gráfica encima del componente para comparar el Problema vs la Solución
   const [viewMode, setViewMode] = useState<'PROBLEM' | 'SOLUTION'>('PROBLEM');
   const [certifiedGrade, setCertifiedGrade] = useState<AptitudeGrade | null>(null);
+  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(true);
+  const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
 
   const currentStation = STATIONS[activeIndex];
   const isCurrentSolved = solvedMap[currentStation.id];
   const showingSolution = viewMode === 'SOLUTION';
+
+  const speakTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  const stopVoiceNarration = useCallback(() => {
+    if (speakTimerRef.current) {
+      clearTimeout(speakTimerRef.current);
+      speakTimerRef.current = null;
+    }
+    try {
+      Speech.stop();
+    } catch {
+      // Ignore if Speech API not ready
+    }
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        // Ignore
+      }
+    }
+    setIsSpeaking(false);
+  }, []);
+
+  const speakNarration = useCallback(
+    (text: string) => {
+      stopVoiceNarration();
+      setIsSpeaking(true);
+
+      // Chrome/Android descartan un speak() inmediato tras cancel(): se espera un instante
+      // para que la voz de cada lección suene completa y no se silencie al arrancar.
+      speakTimerRef.current = setTimeout(() => {
+        speakTimerRef.current = null;
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          try {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'es-ES';
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+            utterance.onend = () => setIsSpeaking(false);
+            utterance.onerror = () => setIsSpeaking(false);
+            utteranceRef.current = utterance; // evita que el recolector la descarte a media frase
+            window.speechSynthesis.resume();
+            window.speechSynthesis.speak(utterance);
+            return;
+          } catch {
+            // Fallback to expo-speech below
+          }
+        }
+
+        try {
+          Speech.speak(text, {
+            language: 'es-ES',
+            rate: 1.0,
+            pitch: 1.0,
+            onDone: () => setIsSpeaking(false),
+            onStopped: () => setIsSpeaking(false),
+            onError: () => setIsSpeaking(false),
+          });
+        } catch {
+          setIsSpeaking(false);
+        }
+      }, 250);
+    },
+    [stopVoiceNarration]
+  );
+
+  // Reproduce automáticamente la voz de fondo explicando qué pasa y cómo se soluciona al cambiar de estación
+  useEffect(() => {
+    if (!voiceEnabled) return;
+    const kickoff = setTimeout(() => speakNarration(STATIONS[activeIndex].voiceSummary), 0);
+    return () => {
+      clearTimeout(kickoff);
+      stopVoiceNarration();
+    };
+  }, [activeIndex, speakNarration, stopVoiceNarration, voiceEnabled]);
 
   const solvedCount = useMemo(
     () => STATIONS.filter((s) => solvedMap[s.id]).length,
@@ -182,6 +287,10 @@ export default function PreoperationalScreen() {
     const updated = { ...solvedMap, [currentStation.id]: true };
     setSolvedMap(updated);
     setViewMode('SOLUTION');
+
+    if (voiceEnabled) {
+      speakNarration(currentStation.voiceSolvedConfirmation);
+    }
 
     const totalNow = STATIONS.filter((s) => updated[s.id]).length;
     if (totalNow === STATIONS.length) {
@@ -858,6 +967,57 @@ export default function PreoperationalScreen() {
             </View>
           </View>
 
+          {/* BARRA DE VOZ DE FONDO RESUMIDA (NARRA QUÉ PASA Y CÓMO SE SOLUCIONA) */}
+          <View style={styles.voiceNarratorBar}>
+            <View style={styles.voiceNarratorLeft}>
+              <View style={[styles.voicePulseCircle, isSpeaking && styles.voicePulseCircleActive]}>
+                <Ionicons
+                  name={voiceEnabled ? 'volume-high' : 'volume-mute'}
+                  size={16}
+                  color={voiceEnabled ? PsychoPalette.cyan : PsychoPalette.textMuted}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.voiceNarratorTitle}>
+                  {isSpeaking
+                    ? 'VOZ DE FONDO EXPLICANDO EN VIVO (RESUMEN)...'
+                    : 'RESUMEN DE VOZ (QUÉ PASA Y CÓMO SE SOLUCIONA)'}
+                </Text>
+                <Text style={styles.voiceNarratorTranscript}>{currentStation.voiceSummary}</Text>
+              </View>
+            </View>
+
+            <View style={styles.voiceNarratorBtns}>
+              <Pressable
+                onPress={() => speakNarration(currentStation.voiceSummary)}
+                style={styles.voiceReplayBtn}>
+                <Ionicons name="play-circle" size={14} color={PsychoPalette.bgPrimary} />
+                <Text style={styles.voiceReplayBtnText}>ESCUCHAR VOZ</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  const nextState = !voiceEnabled;
+                  setVoiceEnabled(nextState);
+                  if (!nextState) {
+                    stopVoiceNarration();
+                  } else {
+                    speakNarration(currentStation.voiceSummary);
+                  }
+                }}
+                style={[styles.voiceToggleBtn, !voiceEnabled && { opacity: 0.65 }]}>
+                <Ionicons
+                  name={voiceEnabled ? 'mic' : 'mic-off'}
+                  size={13}
+                  color={voiceEnabled ? PsychoPalette.mint : PsychoPalette.textSecondary}
+                />
+                <Text style={styles.voiceToggleBtnText}>
+                  {voiceEnabled ? 'VOZ AUTO: ON' : 'VOZ AUTO: OFF'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
           {/* ESCENA GRÁFICA DINÁMICA ENCIMA DEL COMPONENTE */}
           <View style={styles.interactiveGraphicContainer}>
             {renderInteractiveComponentScene()}
@@ -1139,6 +1299,89 @@ const styles = StyleSheet.create({
     color: PsychoPalette.textSecondary,
     fontSize: 10,
     fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  voiceNarratorBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 10,
+    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 217, 245, 0.38)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  voiceNarratorLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    minWidth: 220,
+  },
+  voicePulseCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: PsychoPalette.bgPanel,
+    borderWidth: 1.5,
+    borderColor: PsychoPalette.borderSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voicePulseCircleActive: {
+    borderColor: PsychoPalette.cyan,
+    backgroundColor: 'rgba(0, 217, 245, 0.22)',
+  },
+  voiceNarratorTitle: {
+    color: PsychoPalette.cyan,
+    fontSize: 9.5,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  voiceNarratorTranscript: {
+    color: PsychoPalette.textPrimary,
+    fontSize: 11.5,
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  voiceNarratorBtns: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  voiceReplayBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: PsychoPalette.cyan,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  voiceReplayBtnText: {
+    color: PsychoPalette.bgPrimary,
+    fontSize: 9.5,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  voiceToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: PsychoPalette.bgPanel,
+    borderWidth: 1,
+    borderColor: PsychoPalette.borderSubtle,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  voiceToggleBtnText: {
+    color: PsychoPalette.textPrimary,
+    fontSize: 9.5,
+    fontWeight: '800',
     fontFamily: Fonts.mono,
   },
   interactiveGraphicContainer: {
