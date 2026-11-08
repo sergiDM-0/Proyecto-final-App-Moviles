@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, {
   Circle,
   Defs,
+  Ellipse,
   G,
   Line,
   LinearGradient,
@@ -28,24 +29,30 @@ const CAR_LENGTH = 54;
 const CAR_WIDTH = 28;
 const WHEELBASE = 36;
 const MAX_STEER_RAD = (38 * Math.PI) / 180;
+const STEERING_WHEEL_RADIUS = 48;
 
-// Círculo del joystick más pequeño y compacto según lo solicitado
-const JOYSTICK_RADIUS = 28;
-
-// Dimensiones del viewport 3D SVG
+// Dimensiones del visor 3D estilo urbano diurno (como la imagen de referencia)
 const VIEW3D_W = 720;
-const VIEW3D_H = 360;
-const HORIZON_Y = 118;
-const FOCAL_LEN = 310;
+const VIEW3D_H = 420;
+const HORIZON_Y = 122;
+const FOCAL_LEN = 320;
+
+interface ConePoint {
+  x: number;
+  y: number;
+}
+
+interface FloorArrow {
+  x: number;
+  y: number;
+  angleDeg: number;
+}
 
 interface ObstacleBox {
   x: number;
   y: number;
   w: number;
   h: number;
-  height3D?: number;
-  kind?: 'car' | 'wall' | 'zone';
-  color?: string;
   label?: string;
 }
 
@@ -65,76 +72,140 @@ interface ScenarioConfig {
   startY: number;
   startAngleDeg: number;
   parkingZone: ParkingZone;
+  cones: ConePoint[];
+  arrows: FloorArrow[];
   obstacles: ObstacleBox[];
 }
 
-// Conserva los diseños de los 3 niveles originales realizados ahora en entorno 3D de carretera
+// Los 3 niveles de la prueba de conducción ambientados en la pista 3D de conos, flechas amarillas y zona P azul
 const SCENARIOS: ScenarioConfig[] = [
   {
     id: 'bay',
-    title: 'Nivel 1: Parqueo en Batería 3D (90°)',
-    shortLabel: '1. BATERÍA 90° (3D)',
-    startX: 115,
-    startY: 295,
-    startAngleDeg: 0,
+    title: 'Nivel 1: Circuito de Conos y Parqueo [P] (90°)',
+    shortLabel: '1. PARQUEO [P] 90°',
+    startX: 145,
+    startY: 315,
+    startAngleDeg: -12,
     parkingZone: {
-      x: 268,
-      y: 34,
-      w: 56,
-      h: 84,
+      x: 262,
+      y: 42,
+      w: 62,
+      h: 86,
       targetAngleDeg: -90,
     },
+    cones: [
+      // Corredor izquierdo y derecho de conos naranjas con blanco (como en la imagen)
+      { x: 95, y: 345 },
+      { x: 145, y: 345 },
+      { x: 195, y: 345 },
+      { x: 245, y: 345 },
+      { x: 295, y: 345 },
+      { x: 345, y: 345 },
+      { x: 395, y: 345 },
+      { x: 105, y: 245 },
+      { x: 155, y: 245 },
+      { x: 205, y: 245 },
+      // Conos que delimitan el cajón de parqueo P
+      { x: 235, y: 132 },
+      { x: 235, y: 92 },
+      { x: 235, y: 52 },
+      { x: 350, y: 132 },
+      { x: 350, y: 92 },
+      { x: 350, y: 52 },
+      { x: 410, y: 132 },
+      { x: 460, y: 132 },
+    ],
+    arrows: [
+      { x: 185, y: 290, angleDeg: 0 },
+      { x: 275, y: 265, angleDeg: -45 },
+      { x: 293, y: 175, angleDeg: -90 },
+    ],
     obstacles: [
-      { x: 185, y: 34, w: 68, h: 80, height3D: 22, kind: 'car', color: '#DC2626', label: 'VEH-A' },
-      { x: 338, y: 34, w: 68, h: 80, height3D: 22, kind: 'car', color: '#D97706', label: 'VEH-B' },
-      {
-        x: 430,
-        y: 34,
-        w: 135,
-        h: 80,
-        height3D: 16,
-        kind: 'zone',
-        color: '#334155',
-        label: 'ZONA RESERVADA',
-      },
+      { x: 165, y: 42, w: 62, h: 80, label: 'CONOS IZQ' },
+      { x: 360, y: 42, w: 62, h: 80, label: 'CONOS DER' },
     ],
   },
   {
     id: 'parallel',
-    title: 'Nivel 2: Parqueo en Paralelo 3D (Cordón)',
-    shortLabel: '2. PARALELO (3D)',
-    startX: 140,
-    startY: 220,
+    title: 'Nivel 2: Parqueo en Paralelo entre Conos [P]',
+    shortLabel: '2. PARALELO [P]',
+    startX: 130,
+    startY: 225,
     startAngleDeg: 0,
     parkingZone: {
       x: 255,
-      y: 44,
-      w: 88,
-      h: 48,
+      y: 46,
+      w: 92,
+      h: 52,
       targetAngleDeg: 0,
     },
+    cones: [
+      { x: 140, y: 46 },
+      { x: 185, y: 46 },
+      { x: 230, y: 46 },
+      { x: 230, y: 95 },
+      { x: 368, y: 46 },
+      { x: 415, y: 46 },
+      { x: 460, y: 46 },
+      { x: 368, y: 95 },
+      // Hilera inferior de conos
+      { x: 130, y: 285 },
+      { x: 195, y: 285 },
+      { x: 260, y: 285 },
+      { x: 325, y: 285 },
+      { x: 390, y: 285 },
+      { x: 455, y: 285 },
+    ],
+    arrows: [
+      { x: 195, y: 195, angleDeg: 0 },
+      { x: 295, y: 175, angleDeg: 0 },
+      { x: 355, y: 135, angleDeg: -145 },
+    ],
     obstacles: [
-      { x: 145, y: 44, w: 94, h: 46, height3D: 22, kind: 'car', color: '#0284C7', label: 'VEH-1' },
-      { x: 358, y: 44, w: 94, h: 46, height3D: 22, kind: 'car', color: '#7C3AED', label: 'VEH-2' },
+      { x: 135, y: 44, w: 96, h: 48, label: 'ZONA CONOS 1' },
+      { x: 365, y: 44, w: 96, h: 48, label: 'ZONA CONOS 2' },
     ],
   },
   {
     id: 'garage',
-    title: 'Nivel 3: Eslalon y Garaje con Obstáculos 3D',
-    shortLabel: '3. ESLALON 3D',
+    title: 'Nivel 3: Eslalon de Conos y Meta [P]',
+    shortLabel: '3. ESLALON CONOS',
     startX: 95,
     startY: 300,
-    startAngleDeg: -20,
+    startAngleDeg: -18,
     parkingZone: {
-      x: 472,
-      y: 55,
-      w: 86,
-      h: 52,
+      x: 468,
+      y: 56,
+      w: 88,
+      h: 56,
       targetAngleDeg: 0,
     },
+    cones: [
+      { x: 240, y: 180 },
+      { x: 240, y: 215 },
+      { x: 240, y: 250 },
+      { x: 275, y: 180 },
+      { x: 275, y: 250 },
+      { x: 365, y: 65 },
+      { x: 365, y: 100 },
+      { x: 365, y: 135 },
+      { x: 400, y: 65 },
+      { x: 400, y: 135 },
+      // Conos guía exteriores
+      { x: 145, y: 340 },
+      { x: 215, y: 340 },
+      { x: 310, y: 310 },
+      { x: 420, y: 240 },
+      { x: 495, y: 185 },
+    ],
+    arrows: [
+      { x: 165, y: 265, angleDeg: -25 },
+      { x: 305, y: 150, angleDeg: 15 },
+      { x: 430, y: 120, angleDeg: -25 },
+    ],
     obstacles: [
-      { x: 240, y: 175, w: 42, h: 90, height3D: 28, kind: 'wall', color: '#B45309', label: 'MURO 1' },
-      { x: 365, y: 60, w: 42, h: 95, height3D: 28, kind: 'wall', color: '#B45309', label: 'MURO 2' },
+      { x: 238, y: 175, w: 40, h: 82, label: 'BARRERA CONOS 1' },
+      { x: 363, y: 60, w: 40, h: 82, label: 'BARRERA CONOS 2' },
     ],
   },
 ];
@@ -159,64 +230,53 @@ function getCarCorners(x: number, y: number, angleRad: number) {
 interface Pt3D {
   x: number;
   y: number;
-  z: number; // height above ground
+  z: number;
 }
 
 interface ProjectedPt {
   sx: number;
   sy: number;
   depth: number;
+  scale: number;
 }
 
-/**
- * Transforma un punto del mundo (x, y, z) a coordenadas de pantalla en perspectiva 3D
- * respecto a una cámara posicionada en (camX, camY, camZ) mirando en dirección camYaw
- */
 function projectPoint3D(
   pt: Pt3D,
   camX: number,
   camY: number,
   camZ: number,
   camYaw: number,
-  pitchOffset: number = 0
+  pitchOffset = 18
 ): ProjectedPt | null {
   const dx = pt.x - camX;
   const dy = pt.y - camY;
   const cos = Math.cos(camYaw);
   const sin = Math.sin(camYaw);
 
-  // forward = a lo largo del eje de visión, right = lateral derecha
   const forward = dx * cos + dy * sin;
   const right = -dx * sin + dy * cos;
 
-  const clampedForward = Math.max(8, forward);
-  if (forward < 6) {
-    return null;
-  }
+  if (forward < 8) return null;
 
-  const scale = FOCAL_LEN / clampedForward;
+  const scale = FOCAL_LEN / forward;
   const sx = VIEW3D_W / 2 + right * scale;
   const sy = HORIZON_Y + pitchOffset + (camZ - pt.z) * scale;
 
-  return { sx, sy, depth: clampedForward };
+  return { sx, sy, depth: forward, scale };
 }
 
-/**
- * Proyecta un polígono 3D recortando los vértices detrás de la cámara para evitar distorsiones
- */
 function projectPolygon3D(
   pts: Pt3D[],
   camX: number,
   camY: number,
   camZ: number,
   camYaw: number,
-  pitchOffset: number = 0
+  pitchOffset = 18
 ): { pointsStr: string; avgDepth: number; centerSx: number; centerSy: number } | null {
   const cos = Math.cos(camYaw);
   const sin = Math.sin(camYaw);
   const nearPlane = 10;
 
-  // Transformar a espacio de cámara (forward, right, z)
   const camPts = pts.map((p) => {
     const dx = p.x - camX;
     const dy = p.y - camY;
@@ -227,15 +287,14 @@ function projectPolygon3D(
     };
   });
 
-  // Recorte (clipping) contra el plano cercano nearPlane
   const clipped: { fwd: number; right: number; z: number }[] = [];
   for (let i = 0; i < camPts.length; i++) {
     const curr = camPts[i];
     const prev = camPts[(i + camPts.length - 1) % camPts.length];
-    const currInside = curr.fwd >= nearPlane;
-    const prevInside = prev.fwd >= nearPlane;
+    const currIn = curr.fwd >= nearPlane;
+    const prevIn = prev.fwd >= nearPlane;
 
-    if (currInside !== prevInside) {
+    if (currIn !== prevIn) {
       const t = (nearPlane - prev.fwd) / (curr.fwd - prev.fwd);
       clipped.push({
         fwd: nearPlane,
@@ -243,9 +302,7 @@ function projectPolygon3D(
         z: prev.z + t * (curr.z - prev.z),
       });
     }
-    if (currInside) {
-      clipped.push(curr);
-    }
+    if (currIn) clipped.push(curr);
   }
 
   if (clipped.length < 3) return null;
@@ -253,7 +310,7 @@ function projectPolygon3D(
   let sumDepth = 0;
   let sumX = 0;
   let sumY = 0;
-  const screenCoords = clipped.map((cp) => {
+  const coords = clipped.map((cp) => {
     const scale = FOCAL_LEN / cp.fwd;
     const sx = VIEW3D_W / 2 + cp.right * scale;
     const sy = HORIZON_Y + pitchOffset + (camZ - cp.z) * scale;
@@ -264,7 +321,7 @@ function projectPolygon3D(
   });
 
   return {
-    pointsStr: screenCoords.join(' '),
+    pointsStr: coords.join(' '),
     avgDepth: sumDepth / clipped.length,
     centerSx: sumX / clipped.length,
     centerSy: sumY / clipped.length,
@@ -276,8 +333,6 @@ export default function ManeuversSimulatorScreen() {
   const { playLeftSignal, playRightSignal, playSuccess, playError } = usePsychAudio();
 
   const [scenario, setScenario] = useState<ScenarioConfig>(SCENARIOS[0]);
-  const [cameraMode, setCameraMode] = useState<'CHASE_3D' | 'COCKPIT_3D'>('CHASE_3D');
-
   const [carState, setCarState] = useState({
     x: SCENARIOS[0].startX,
     y: SCENARIOS[0].startY,
@@ -286,27 +341,26 @@ export default function ManeuversSimulatorScreen() {
     steerRad: 0,
   });
 
-  // Mandos y controles de un carro normal en la cabina
-  const [engineOn, setEngineOn] = useState<boolean>(true);
-  const [seatbeltOn, setSeatbeltOn] = useState<boolean>(true);
-  const [handbrakeOn, setHandbrakeOn] = useState<boolean>(false);
-  const [headlightMode, setHeadlightMode] = useState<'OFF' | 'LOW' | 'HIGH'>('LOW');
-  const [turnSignal, setTurnSignal] = useState<'NONE' | 'LEFT' | 'RIGHT' | 'HAZARD'>('NONE');
-  const [wipersOn, setWipersOn] = useState<boolean>(false);
-  const [blinkTick, setBlinkTick] = useState<boolean>(true);
-  const [wiperAngle, setWiperAngle] = useState<number>(0);
-  const [cabinAlert, setCabinAlert] = useState<string | null>(null);
+  // Historial de huellas de neumáticos sobre el cemento (como en la imagen)
+  const [tireTracks, setTireTracks] = useState<{ x: number; y: number; angleRad: number }[]>([]);
 
+  // Mandos del vehículo
   const [gear, setGear] = useState<'D' | 'R'>('D');
-  const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
-  const [gasActive, setGasActive] = useState(false);
-  const [brakeActive, setBrakeActive] = useState(false);
+  const [handbrakeOn, setHandbrakeOn] = useState<boolean>(false);
+  const [seatbeltOn, setSeatbeltOn] = useState<boolean>(true);
+  const [turnSignal, setTurnSignal] = useState<'NONE' | 'LEFT' | 'RIGHT' | 'HAZARD'>('NONE');
+  const [lightsOn, setLightsOn] = useState<boolean>(true);
+  const [blinkTick, setBlinkTick] = useState<boolean>(true);
 
-  const [elapsedSec, setElapsedSec] = useState(0);
-  const [collisions, setCollisions] = useState(0);
-  const [alignmentPct, setAlignmentPct] = useState(0);
-  const [parkedSuccess, setParkedSuccess] = useState(false);
-  const [collisionFlash, setCollisionFlash] = useState(false);
+  const [wheelDragX, setWheelDragX] = useState<number>(0);
+  const [gasActive, setGasActive] = useState<boolean>(false);
+  const [brakeActive, setBrakeActive] = useState<boolean>(false);
+
+  const [elapsedSec, setElapsedSec] = useState<number>(0);
+  const [collisions, setCollisions] = useState<number>(0);
+  const [alignmentPct, setAlignmentPct] = useState<number>(0);
+  const [parkedSuccess, setParkedSuccess] = useState<boolean>(false);
+  const [collisionFlash, setCollisionFlash] = useState<boolean>(false);
 
   const physicsRef = useRef({
     x: SCENARIOS[0].startX,
@@ -317,40 +371,31 @@ export default function ManeuversSimulatorScreen() {
     gas: false,
     brake: false,
     gear: 'D' as 'D' | 'R',
-    engineOn: true,
     handbrakeOn: false,
     collisions: 0,
     startTime: 0,
     lastCollisionTime: 0,
+    lastTrackTime: 0,
     completed: false,
   });
 
   useEffect(() => {
-    const normalizedSteer = joystickKnob.x / JOYSTICK_RADIUS;
+    const normalizedSteer = Math.max(-1, Math.min(1, wheelDragX / STEERING_WHEEL_RADIUS));
     physicsRef.current.steerRad = normalizedSteer * MAX_STEER_RAD;
-  }, [joystickKnob]);
+  }, [wheelDragX]);
 
   useEffect(() => {
     physicsRef.current.gas = gasActive;
     physicsRef.current.brake = brakeActive;
     physicsRef.current.gear = gear;
-    physicsRef.current.engineOn = engineOn;
     physicsRef.current.handbrakeOn = handbrakeOn;
-  }, [gasActive, brakeActive, gear, engineOn, handbrakeOn]);
+  }, [gasActive, brakeActive, gear, handbrakeOn]);
 
-  // Animación de direccionales y limpiaparabrisas
   useEffect(() => {
-    if (turnSignal === 'NONE' && !wipersOn) return;
-    const interval = setInterval(() => {
-      if (turnSignal !== 'NONE') {
-        setBlinkTick((prev) => !prev);
-      }
-      if (wipersOn) {
-        setWiperAngle((prev) => (prev === 0 ? 48 : 0));
-      }
-    }, 380);
-    return () => clearInterval(interval);
-  }, [turnSignal, wipersOn]);
+    if (turnSignal === 'NONE') return;
+    const timer = setInterval(() => setBlinkTick((p) => !p), 380);
+    return () => clearInterval(timer);
+  }, [turnSignal]);
 
   const resetScenario = useCallback((targetScenario: ScenarioConfig) => {
     const initAngle = (targetScenario.startAngleDeg * Math.PI) / 180;
@@ -363,11 +408,11 @@ export default function ManeuversSimulatorScreen() {
       gas: false,
       brake: false,
       gear: 'D',
-      engineOn: true,
       handbrakeOn: false,
       collisions: 0,
       startTime: performance.now(),
       lastCollisionTime: 0,
+      lastTrackTime: 0,
       completed: false,
     };
     setCarState({
@@ -377,10 +422,10 @@ export default function ManeuversSimulatorScreen() {
       speed: 0,
       steerRad: 0,
     });
+    setTireTracks([]);
     setGear('D');
     setHandbrakeOn(false);
-    setEngineOn(true);
-    setJoystickKnob({ x: 0, y: 0 });
+    setWheelDragX(0);
     setGasActive(false);
     setBrakeActive(false);
     setElapsedSec(0);
@@ -388,7 +433,6 @@ export default function ManeuversSimulatorScreen() {
     setAlignmentPct(0);
     setParkedSuccess(false);
     setCollisionFlash(false);
-    setCabinAlert(null);
   }, []);
 
   const handleSelectScenario = useCallback(
@@ -399,7 +443,7 @@ export default function ManeuversSimulatorScreen() {
     [resetScenario]
   );
 
-  // Motor físico de conducción a 60 FPS
+  // Motor físico 60 FPS
   useEffect(() => {
     let rafId: number;
     let lastTime = performance.now();
@@ -409,51 +453,39 @@ export default function ManeuversSimulatorScreen() {
       lastTime = now;
 
       const p = physicsRef.current;
-      if (p.startTime === 0) {
-        p.startTime = now;
-      }
+      if (p.startTime === 0) p.startTime = now;
+
       if (!p.completed) {
         const elapsed = Number(((now - p.startTime) / 1000).toFixed(1));
         setElapsedSec(elapsed);
 
-        const maxForwardSpeed = 115;
-        const maxReverseSpeed = -78;
-        const accelRate = 155;
+        const maxForwardSpeed = 112;
+        const maxReverseSpeed = -76;
+        const accelRate = 152;
         const brakeDecelRate = 240;
         const naturalFriction = 68;
 
-        if (!p.engineOn) {
-          p.speed = Math.abs(p.speed) < 3 ? 0 : p.speed * 0.92;
-          if (p.gas) {
-            setCabinAlert('¡ENCIENDA EL MOTOR (START) EN LA CABINA PARA CONDUCIR!');
+        if (p.handbrakeOn) {
+          p.speed = Math.abs(p.speed) < 3 ? 0 : p.speed * 0.84;
+        } else if (p.gas && !p.brake) {
+          if (p.gear === 'D') {
+            p.speed = Math.min(maxForwardSpeed, p.speed + accelRate * dt);
+          } else {
+            p.speed = Math.max(maxReverseSpeed, p.speed - accelRate * dt);
           }
-        } else if (p.handbrakeOn) {
-          p.speed = Math.abs(p.speed) < 3 ? 0 : p.speed * 0.85;
-          if (p.gas) {
-            setCabinAlert('¡LIBERE EL FRENO DE MANO ((P)) PARA AVANZAR!');
+        } else if (p.brake) {
+          if (p.speed > 8) {
+            p.speed = Math.max(0, p.speed - brakeDecelRate * dt);
+          } else {
+            p.speed = Math.max(maxReverseSpeed, p.speed - accelRate * 0.85 * dt);
           }
         } else {
-          if (p.gas && !p.brake) {
-            setCabinAlert(null);
-            if (p.gear === 'D') {
-              p.speed = Math.min(maxForwardSpeed, p.speed + accelRate * dt);
-            } else {
-              p.speed = Math.max(maxReverseSpeed, p.speed - accelRate * dt);
-            }
-          } else if (p.brake) {
-            if (p.speed > 8) {
-              p.speed = Math.max(0, p.speed - brakeDecelRate * dt);
-            } else {
-              p.speed = Math.max(maxReverseSpeed, p.speed - accelRate * 0.85 * dt);
-            }
+          if (Math.abs(p.speed) < 3) {
+            p.speed = 0;
+          } else if (p.speed > 0) {
+            p.speed = Math.max(0, p.speed - naturalFriction * dt);
           } else {
-            if (Math.abs(p.speed) < 3) {
-              p.speed = 0;
-            } else if (p.speed > 0) {
-              p.speed = Math.max(0, p.speed - naturalFriction * dt);
-            } else {
-              p.speed = Math.min(0, p.speed + naturalFriction * dt);
-            }
+            p.speed = Math.min(0, p.speed + naturalFriction * dt);
           }
         }
 
@@ -477,7 +509,11 @@ export default function ManeuversSimulatorScreen() {
           )
         );
 
-        if (outOfBounds || hitsObstacle) {
+        const hitsCone = scenario.cones.some((cone) =>
+          corners.some((c) => Math.hypot(c.x - cone.x, c.y - cone.y) < 9)
+        );
+
+        if (outOfBounds || hitsObstacle || hitsCone) {
           p.speed = -p.speed * 0.35;
           if (now - p.lastCollisionTime > 750) {
             p.lastCollisionTime = now;
@@ -491,6 +527,15 @@ export default function ManeuversSimulatorScreen() {
           p.x = nextX;
           p.y = nextY;
           p.angleRad = nextAngle;
+
+          // Guardar huellas de neumáticos al moverse
+          if (Math.abs(p.speed) > 12 && now - p.lastTrackTime > 160) {
+            p.lastTrackTime = now;
+            setTireTracks((prev) => [
+              ...prev.slice(-18),
+              { x: p.x, y: p.y, angleRad: p.angleRad },
+            ]);
+          }
         }
 
         const pz = scenario.parkingZone;
@@ -501,10 +546,10 @@ export default function ManeuversSimulatorScreen() {
         const currentCorners = getCarCorners(p.x, p.y, p.angleRad);
         const cornersInside = currentCorners.filter(
           (c) =>
-            c.x >= pz.x - 4 &&
-            c.x <= pz.x + pz.w + 4 &&
-            c.y >= pz.y - 4 &&
-            c.y <= pz.y + pz.h + 4
+            c.x >= pz.x - 5 &&
+            c.x <= pz.x + pz.w + 5 &&
+            c.y >= pz.y - 5 &&
+            c.y <= pz.y + pz.h + 5
         ).length;
 
         const distScore = Math.max(0, 100 - distToCenter * 0.85);
@@ -551,60 +596,49 @@ export default function ManeuversSimulatorScreen() {
     return () => cancelAnimationFrame(rafId);
   }, [playError, playSuccess, scenario, seatbeltOn, setManeuverResult]);
 
-  // Gesto del Joystick Compacto (Esquina Inferior Izquierda)
-  const joystickGesture = Gesture.Pan()
+  // Gesto del Volante 3D (Esquina Inferior Izquierda)
+  const steeringWheelGesture = Gesture.Pan()
     .runOnJS(true)
     .onChange((e) => {
-      setJoystickKnob((prev) => {
-        const rawX = prev.x + e.changeX;
-        const rawY = prev.y + e.changeY;
-        const dist = Math.hypot(rawX, rawY);
-        const scale = dist > JOYSTICK_RADIUS ? JOYSTICK_RADIUS / dist : 1;
-        return {
-          x: rawX * scale,
-          y: rawY * scale,
-        };
-      });
+      setWheelDragX((prev) =>
+        Math.max(-STEERING_WHEEL_RADIUS, Math.min(STEERING_WHEEL_RADIUS, prev + e.changeX))
+      );
     })
     .onFinalize(() => {
-      setJoystickKnob({ x: 0, y: 0 });
+      setWheelDragX(0);
     });
 
-  const carAngleDeg = (carState.angleRad * 180) / Math.PI;
   const steerAngleDeg = Math.round((carState.steerRad * 180) / Math.PI);
+  const wheelVisualRotateDeg = steerAngleDeg * 2.4;
   const speedKmh = Math.round(Math.abs(carState.speed) * 0.32);
-  const rpm = engineOn ? Math.round(850 + Math.abs(carState.speed) * 32) : 0;
 
-  // Cálculo de la distancia trasera a obstáculos para los espejos retrovisores
-  const rearProximityMeters = useMemo(() => {
+  // Distancia trasera para el espejo retrovisor
+  const rearDistMeters = useMemo(() => {
     const rearX = carState.x - (CAR_LENGTH / 2) * Math.cos(carState.angleRad);
     const rearY = carState.y - (CAR_LENGTH / 2) * Math.sin(carState.angleRad);
     let minPx = 220;
-    scenario.obstacles.forEach((obs) => {
-      const cx = Math.max(obs.x, Math.min(rearX, obs.x + obs.w));
-      const cy = Math.max(obs.y, Math.min(rearY, obs.y + obs.h));
-      const d = Math.hypot(rearX - cx, rearY - cy);
+    scenario.cones.forEach((c) => {
+      const d = Math.hypot(rearX - c.x, rearY - c.y);
       if (d < minPx) minPx = d;
     });
     return Number(Math.max(0.2, minPx / 28).toFixed(1));
-  }, [carState.angleRad, carState.x, carState.y, scenario.obstacles]);
+  }, [carState.angleRad, carState.x, carState.y, scenario.cones]);
 
-  // Construcción de la escena 3D en perspectiva
-  const scene3D = useMemo(() => {
-    const isChase = cameraMode === 'CHASE_3D';
-    const camDistBack = isChase ? 108 : -6;
-    const camZ = isChase ? 62 : 34;
+  // Proyección 3D del entorno urbano (explanada gris, conos naranjas/blancos, flechas amarillas, cuadro azul [P] y letrero vertical [P])
+  const world3D = useMemo(() => {
+    const camDistBack = 112;
+    const camZ = 68;
     const camX = carState.x - Math.cos(carState.angleRad) * camDistBack;
     const camY = carState.y - Math.sin(carState.angleRad) * camDistBack;
     const camYaw = carState.angleRad;
 
-    // 1. Polígono de la superficie de carretera asfaltada 3D
-    const roadSlab = projectPolygon3D(
+    // 1. Piso de concreto claro de la explanada de pruebas
+    const concretePlaza = projectPolygon3D(
       [
-        { x: 10, y: 10, z: 0 },
-        { x: WORLD_W - 10, y: 10, z: 0 },
-        { x: WORLD_W - 10, y: WORLD_H - 10, z: 0 },
-        { x: 10, y: WORLD_H - 10, z: 0 },
+        { x: 0, y: 0, z: 0 },
+        { x: WORLD_W, y: 0, z: 0 },
+        { x: WORLD_W, y: WORLD_H, z: 0 },
+        { x: 0, y: WORLD_H, z: 0 },
       ],
       camX,
       camY,
@@ -612,340 +646,151 @@ export default function ManeuversSimulatorScreen() {
       camYaw
     );
 
-    // 2. Líneas de carril de carretera en 3D
-    const laneStripes: string[] = [];
-    for (let lx = 35; lx < WORLD_W - 45; lx += 55) {
-      const stripe = projectPolygon3D(
+    // 2. Líneas blancas de bahías de parqueo en el suelo
+    const whiteBayLines: string[] = [];
+    for (let bx = 110; bx <= 510; bx += 65) {
+      const linePoly = projectPolygon3D(
         [
-          { x: lx, y: 206, z: 0.2 },
-          { x: lx + 30, y: 206, z: 0.2 },
-          { x: lx + 30, y: 212, z: 0.2 },
-          { x: lx, y: 212, z: 0.2 },
+          { x: bx, y: 30, z: 0.1 },
+          { x: bx + 3, y: 30, z: 0.1 },
+          { x: bx + 3, y: 125, z: 0.1 },
+          { x: bx, y: 125, z: 0.1 },
         ],
         camX,
         camY,
         camZ,
         camYaw
       );
-      if (stripe) laneStripes.push(stripe.pointsStr);
+      if (linePoly) whiteBayLines.push(linePoly.pointsStr);
     }
 
-    // Bordillo sur de la carretera
-    const southCurb = projectPolygon3D(
-      [
-        { x: 18, y: 342, z: 0.3 },
-        { x: WORLD_W - 18, y: 342, z: 0.3 },
-        { x: WORLD_W - 18, y: 348, z: 0.3 },
-        { x: 18, y: 348, z: 0.3 },
-      ],
-      camX,
-      camY,
-      camZ,
-      camYaw
-    );
-
-    // Bordillo norte (zona de bahías/andén)
-    const northCurb = projectPolygon3D(
-      [
-        { x: 18, y: 24, z: 0.3 },
-        { x: WORLD_W - 18, y: 24, z: 0.3 },
-        { x: WORLD_W - 18, y: 32, z: 0.3 },
-        { x: 18, y: 32, z: 0.3 },
-      ],
-      camX,
-      camY,
-      camZ,
-      camYaw
-    );
-
-    // 3. Zona de Parqueo 3D Demarcada (P)
-    const pz = scenario.parkingZone;
-    const parkingFloor = projectPolygon3D(
-      [
-        { x: pz.x, y: pz.y, z: 0.5 },
-        { x: pz.x + pz.w, y: pz.y, z: 0.5 },
-        { x: pz.x + pz.w, y: pz.y + pz.h, z: 0.5 },
-        { x: pz.x, y: pz.y + pz.h, z: 0.5 },
-      ],
-      camX,
-      camY,
-      camZ,
-      camYaw
-    );
-
-    // Pilares luminosos 3D en las 4 esquinas de la zona de parqueo para guía espacial
-    const pzCorners = [
-      { x: pz.x, y: pz.y },
-      { x: pz.x + pz.w, y: pz.y },
-      { x: pz.x + pz.w, y: pz.y + pz.h },
-      { x: pz.x, y: pz.y + pz.h },
-    ];
-    const beaconPosts: { x1: number; y1: number; x2: number; y2: number }[] = [];
-    pzCorners.forEach((c) => {
-      const bot = projectPoint3D({ x: c.x, y: c.y, z: 0 }, camX, camY, camZ, camYaw);
-      const top = projectPoint3D({ x: c.x, y: c.y, z: 24 }, camX, camY, camZ, camYaw);
-      if (bot && top) {
-        beaconPosts.push({ x1: bot.sx, y1: bot.sy, x2: top.sx, y2: top.sy });
-      }
-    });
-
-    // 4. Haz de luces delanteras sobre la carretera 3D
-    let headlightCone: string | null = null;
-    if (headlightMode !== 'OFF') {
-      const reach = headlightMode === 'HIGH' ? 165 : 95;
-      const spread = headlightMode === 'HIGH' ? 52 : 32;
-      const cosA = Math.cos(carState.angleRad);
-      const sinA = Math.sin(carState.angleRad);
-      const frontX = carState.x + (CAR_LENGTH / 2) * cosA;
-      const frontY = carState.y + (CAR_LENGTH / 2) * sinA;
-
-      const beamPoly = projectPolygon3D(
-        [
-          { x: frontX - 10 * sinA, y: frontY + 10 * cosA, z: 0.6 },
-          { x: frontX + 10 * sinA, y: frontY - 10 * cosA, z: 0.6 },
-          {
-            x: frontX + reach * cosA + spread * sinA,
-            y: frontY + reach * sinA - spread * cosA,
-            z: 0.6,
-          },
-          {
-            x: frontX + reach * cosA - spread * sinA,
-            y: frontY + reach * sinA + spread * cosA,
-            z: 0.6,
-          },
-        ],
-        camX,
-        camY,
-        camZ,
-        camYaw
-      );
-      if (beamPoly) headlightCone = beamPoly.pointsStr;
-    }
-
-    // 5. Bloques 3D volumétricos (Obstáculos, carros estacionados y nuestro vehículo azul en vista exterior)
-    interface RenderFace {
-      pointsStr: string;
-      fill: string;
-      stroke: string;
-      avgDepth: number;
-      label?: string;
-      cx?: number;
-      cy?: number;
-    }
-    const faces3D: RenderFace[] = [];
-
-    const addBox3D = (
-      bx: number,
-      by: number,
-      bw: number,
-      bh: number,
-      bz0: number,
-      bz1: number,
-      baseColor: string,
-      topColor: string,
-      strokeColor: string,
-      label?: string
-    ) => {
-      const b0 = { x: bx, y: by, z: bz0 };
-      const b1 = { x: bx + bw, y: by, z: bz0 };
-      const b2 = { x: bx + bw, y: by + bh, z: bz0 };
-      const b3 = { x: bx, y: by + bh, z: bz0 };
-
-      const t0 = { x: bx, y: by, z: bz1 };
-      const t1 = { x: bx + bw, y: by, z: bz1 };
-      const t2 = { x: bx + bw, y: by + bh, z: bz1 };
-      const t3 = { x: bx, y: by + bh, z: bz1 };
-
-      const rawSides = [
-        [b0, b1, t1, t0],
-        [b1, b2, t2, t1],
-        [b2, b3, t3, t2],
-        [b3, b0, t0, t3],
-      ];
-
-      rawSides.forEach((quad) => {
-        const proj = projectPolygon3D(quad, camX, camY, camZ, camYaw);
-        if (proj) {
-          faces3D.push({
-            pointsStr: proj.pointsStr,
-            fill: baseColor,
-            stroke: strokeColor,
-            avgDepth: proj.avgDepth,
-          });
-        }
+    // 3. Huellas de neumáticos dobles en el cemento (como en la imagen)
+    const projectedTracks: string[] = [];
+    tireTracks.forEach((tr) => {
+      const cos = Math.cos(tr.angleRad);
+      const sin = Math.sin(tr.angleRad);
+      [-10, 10].forEach((lat) => {
+        const tx = tr.x - 18 * cos - lat * sin;
+        const ty = tr.y - 18 * sin + lat * cos;
+        const poly = projectPolygon3D(
+          [
+            { x: tx - 4 * cos - 2 * sin, y: ty - 4 * sin + 2 * cos, z: 0.15 },
+            { x: tx + 4 * cos - 2 * sin, y: ty + 4 * sin + 2 * cos, z: 0.15 },
+            { x: tx + 4 * cos + 2 * sin, y: ty + 4 * sin - 2 * cos, z: 0.15 },
+            { x: tx - 4 * cos + 2 * sin, y: ty - 4 * sin - 2 * cos, z: 0.15 },
+          ],
+          camX,
+          camY,
+          camZ,
+          camYaw
+        );
+        if (poly) projectedTracks.push(poly.pointsStr);
       });
+    });
 
-      const topProj = projectPolygon3D([t0, t1, t2, t3], camX, camY, camZ, camYaw);
-      if (topProj) {
-        faces3D.push({
-          pointsStr: topProj.pointsStr,
-          fill: topColor,
-          stroke: strokeColor,
-          avgDepth: topProj.avgDepth - 0.5,
-          label,
-          cx: topProj.centerSx,
-          cy: topProj.centerSy,
-        });
-      }
-    };
+    // 4. Flechas amarillas pintadas en el pavimento (como en la imagen)
+    const yellowArrows: string[] = [];
+    scenario.arrows.forEach((ar) => {
+      const rad = (ar.angleDeg * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const localArrow = [
+        { dx: 18, dy: 0 },
+        { dx: 4, dy: -11 },
+        { dx: 4, dy: -4 },
+        { dx: -16, dy: -4 },
+        { dx: -16, dy: 4 },
+        { dx: 4, dy: 4 },
+        { dx: 4, dy: 11 },
+      ];
+      const worldPts = localArrow.map((p) => ({
+        x: ar.x + p.dx * cos - p.dy * sin,
+        y: ar.y + p.dx * sin + p.dy * cos,
+        z: 0.3,
+      }));
+      const proj = projectPolygon3D(worldPts, camX, camY, camZ, camYaw);
+      if (proj) yellowArrows.push(proj.pointsStr);
+    });
 
-    // Agregar los obstáculos de cada nivel en 3D
-    scenario.obstacles.forEach((obs) => {
-      const h3d = obs.height3D ?? 22;
-      const baseCol = obs.color ?? '#1E293B';
-      addBox3D(
-        obs.x,
-        obs.y,
-        obs.w,
-        obs.h,
-        0,
-        h3d * 0.58,
-        baseCol,
-        baseCol,
-        '#94A3B8',
-        obs.kind !== 'car' ? obs.label : undefined
-      );
-      if (obs.kind === 'car') {
-        // Cabina superior del vehículo estacionado en 3D
-        addBox3D(
-          obs.x + obs.w * 0.16,
-          obs.y + obs.h * 0.16,
-          obs.w * 0.68,
-          obs.h * 0.68,
-          h3d * 0.58,
-          h3d,
-          '#0F172A',
-          '#38BDF8',
-          '#E2E8F0',
-          obs.label
-        );
+    // 5. Cuadro Azul de Parqueo [ P ] pintado en el piso con borde blanco
+    const pz = scenario.parkingZone;
+    const blueParkingBox = projectPolygon3D(
+      [
+        { x: pz.x, y: pz.y, z: 0.4 },
+        { x: pz.x + pz.w, y: pz.y, z: 0.4 },
+        { x: pz.x + pz.w, y: pz.y + pz.h, z: 0.4 },
+        { x: pz.x, y: pz.y + pz.h, z: 0.4 },
+      ],
+      camX,
+      camY,
+      camZ,
+      camYaw
+    );
+
+    // 6. Letrero Vertical Azul [ P ] sobre poste metálico al lado de la zona de parqueo (como en la imagen)
+    const signBase = projectPoint3D(
+      { x: pz.x - 10, y: pz.y + 8, z: 0 },
+      camX,
+      camY,
+      camZ,
+      camYaw
+    );
+    const signTop = projectPoint3D(
+      { x: pz.x - 10, y: pz.y + 8, z: 48 },
+      camX,
+      camY,
+      camZ,
+      camYaw
+    );
+
+    // 7. Conos 3D Naranja con Franjas Blancas ordenados por profundidad
+    const projectedCones: {
+      sx: number;
+      sy: number;
+      scale: number;
+      depth: number;
+    }[] = [];
+
+    scenario.cones.forEach((c) => {
+      const pt = projectPoint3D({ x: c.x, y: c.y, z: 0 }, camX, camY, camZ, camYaw);
+      if (pt && pt.sx > -40 && pt.sx < VIEW3D_W + 40) {
+        projectedCones.push(pt);
       }
     });
 
-    // Si estamos en cámara exterior 3D, renderizar el vehículo azul del jugador en 3D con chasis y cabina
-    if (isChase) {
-      const corners = getCarCorners(carState.x, carState.y, carState.angleRad);
-      const bPts = corners.map((c) => ({ x: c.x, y: c.y, z: 0 }));
-      const mPts = corners.map((c) => ({ x: c.x, y: c.y, z: 12 }));
-
-      for (let i = 0; i < 4; i++) {
-        const next = (i + 1) % 4;
-        const sideProj = projectPolygon3D(
-          [bPts[i], bPts[next], mPts[next], mPts[i]],
-          camX,
-          camY,
-          camZ,
-          camYaw
-        );
-        if (sideProj) {
-          faces3D.push({
-            pointsStr: sideProj.pointsStr,
-            fill: i === 2 && brakeActive ? '#EF4444' : '#1D4ED8',
-            stroke: '#93C5FD',
-            avgDepth: sideProj.avgDepth,
-          });
-        }
-      }
-
-      const bodyTop = projectPolygon3D(mPts, camX, camY, camZ, camYaw);
-      if (bodyTop) {
-        faces3D.push({
-          pointsStr: bodyTop.pointsStr,
-          fill: '#2563EB',
-          stroke: '#BAE6FD',
-          avgDepth: bodyTop.avgDepth - 0.3,
-        });
-      }
-
-      // Techo/Cabina 3D del carro del conductor
-      const cos = Math.cos(carState.angleRad);
-      const sin = Math.sin(carState.angleRad);
-      const roofLocal = [
-        { dx: 12, dy: -10 },
-        { dx: 12, dy: 10 },
-        { dx: -14, dy: 10 },
-        { dx: -14, dy: -10 },
-      ];
-      const roofBot = roofLocal.map((p) => ({
-        x: carState.x + p.dx * cos - p.dy * sin,
-        y: carState.y + p.dx * sin + p.dy * cos,
-        z: 12,
-      }));
-      const roofTop = roofLocal.map((p) => ({
-        x: carState.x + p.dx * 0.8 * cos - p.dy * 0.85 * sin,
-        y: carState.y + p.dx * 0.8 * sin + p.dy * 0.85 * cos,
-        z: 22,
-      }));
-
-      for (let i = 0; i < 4; i++) {
-        const next = (i + 1) % 4;
-        const winProj = projectPolygon3D(
-          [roofBot[i], roofBot[next], roofTop[next], roofTop[i]],
-          camX,
-          camY,
-          camZ,
-          camYaw
-        );
-        if (winProj) {
-          faces3D.push({
-            pointsStr: winProj.pointsStr,
-            fill: 'rgba(125, 211, 252, 0.72)',
-            stroke: '#E0F2FE',
-            avgDepth: winProj.avgDepth - 0.5,
-          });
-        }
-      }
-
-      const roofCap = projectPolygon3D(roofTop, camX, camY, camZ, camYaw);
-      if (roofCap) {
-        faces3D.push({
-          pointsStr: roofCap.pointsStr,
-          fill: '#1E40AF',
-          stroke: '#93C5FD',
-          avgDepth: roofCap.avgDepth - 0.8,
-          label: 'TU CARRO 3D',
-          cx: roofCap.centerSx,
-          cy: roofCap.centerSy,
-        });
-      }
-    }
-
-    // Ordenar caras 3D de más lejana a más cercana (Painter's Algorithm)
-    faces3D.sort((a, b) => b.avgDepth - a.avgDepth);
+    projectedCones.sort((a, b) => b.depth - a.depth);
 
     return {
-      roadSlab,
-      laneStripes,
-      southCurb,
-      northCurb,
-      parkingFloor,
-      beaconPosts,
-      headlightCone,
-      faces3D,
+      concretePlaza,
+      whiteBayLines,
+      projectedTracks,
+      yellowArrows,
+      blueParkingBox,
+      signBase,
+      signTop,
+      projectedCones,
     };
-  }, [brakeActive, cameraMode, carState.angleRad, carState.x, carState.y, headlightMode, scenario]);
+  }, [carState.angleRad, carState.x, carState.y, scenario, tireTracks]);
 
-  const pz = scenario.parkingZone;
   const leftBlinkOn = (turnSignal === 'LEFT' || turnSignal === 'HAZARD') && blinkTick;
   const rightBlinkOn = (turnSignal === 'RIGHT' || turnSignal === 'HAZARD') && blinkTick;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
       <TelemetryHeader
-        title="SIMULADOR DE CONDUCCIÓN 3D Y CABINA"
-        subtitle="3 Niveles en Carretera 3D + Espejos Retrovisores + Mandos Reales + Preoperacional"
+        title="SIMULADOR DE CONDUCCIÓN 3D (PISTA OFICIAL)"
+        subtitle="Estacione el Sedán Blanco en la Zona Azul [P] evitando los conos"
         moduleCode="MOD-03"
         showBack
       />
 
       <View style={styles.mainContainer}>
-        {/* BARRA SUPERIOR: ACCESO AL NIVEL PREOPERACIONAL + LOS 3 NIVELES 3D + TELEMETRÍA */}
+        {/* BARRA SUPERIOR: NIVEL PREOPERACIONAL + LOS 3 NIVELES DE CONDUCCIÓN + MÉTRICAS */}
         <View style={styles.topHudBar}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.scenarioTabs}>
-            {/* Botón directo al nuevo Nivel Preoperacional */}
             <Pressable
               onPress={() => router.push('/preoperational')}
               style={[
@@ -965,7 +810,7 @@ export default function ManeuversSimulatorScreen() {
                     color: preoperationalResult ? PsychoPalette.mint : PsychoPalette.amberWarning,
                   },
                 ]}>
-                0. PREOPERACIONAL {preoperationalResult ? `(${preoperationalResult.scorePct}%)` : ''}
+                0. PREOPERACIONAL
               </Text>
             </Pressable>
 
@@ -985,19 +830,15 @@ export default function ManeuversSimulatorScreen() {
           </ScrollView>
 
           <View style={styles.telemetryStrip}>
-            <Pressable
-              onPress={() =>
-                setCameraMode((prev) => (prev === 'CHASE_3D' ? 'COCKPIT_3D' : 'CHASE_3D'))
-              }
-              style={styles.cameraToggleBtn}>
-              <Ionicons name="videocam-outline" size={13} color={PsychoPalette.cyan} />
-              <Text style={styles.cameraToggleText}>
-                {cameraMode === 'CHASE_3D' ? 'VISTA: 3D + CABINA' : 'VISTA: PARABRISAS 1ªP'}
+            <View style={styles.statBadge}>
+              <Text style={styles.statBadgeLabel}>TIEMPO</Text>
+              <Text style={[styles.statBadgeValue, { color: PsychoPalette.cyan }]}>
+                {elapsedSec.toFixed(1)}s
               </Text>
-            </Pressable>
+            </View>
 
             <View style={styles.statBadge}>
-              <Text style={styles.statBadgeLabel}>PARQUEO</Text>
+              <Text style={styles.statBadgeLabel}>ZONA [P]</Text>
               <Text
                 style={[
                   styles.statBadgeValue,
@@ -1008,7 +849,7 @@ export default function ManeuversSimulatorScreen() {
             </View>
 
             <View style={styles.statBadge}>
-              <Text style={styles.statBadgeLabel}>CHOQUES</Text>
+              <Text style={styles.statBadgeLabel}>CONOS</Text>
               <Text
                 style={[
                   styles.statBadgeValue,
@@ -1025,609 +866,587 @@ export default function ManeuversSimulatorScreen() {
           </View>
         </View>
 
-        {/* VENTANA PRINCIPAL: ENTORNO DE CARRETERA 3D + ESPEJOS RETROVISORES + CABINA DE VEHÍCULO */}
+        {/* ==================== ESCENARIO 3D ESTILO IMAGEN DE REFERENCIA ==================== */}
         <View
           style={[
             styles.viewportContainer,
             collisionFlash && { borderColor: PsychoPalette.redSignalBright },
             parkedSuccess && { borderColor: PsychoPalette.mint },
           ]}>
-          {/* RENDERIZADOR 3D DE CARRETERA Y NIVELES */}
           <Svg
             width="100%"
             height="100%"
             viewBox={`0 0 ${VIEW3D_W} ${VIEW3D_H}`}
             preserveAspectRatio="none">
             <Defs>
-              <LinearGradient id="sky3DGrad" x1="0" y1="0" x2="0" y2="1">
-                <Stop
-                  offset="0"
-                  stopColor={headlightMode === 'HIGH' ? '#040B1A' : '#020617'}
-                />
-                <Stop offset="0.65" stopColor="#0B1930" />
-                <Stop offset="1" stopColor="#172A4A" />
+              {/* Cielo azul diurno brillante igual a la imagen */}
+              <LinearGradient id="daySkyGrad" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#0284C7" />
+                <Stop offset="0.6" stopColor="#38BDF8" />
+                <Stop offset="1" stopColor="#BAE6FD" />
               </LinearGradient>
-              <LinearGradient id="ground3DGrad" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#091322" />
-                <Stop offset="1" stopColor="#050A14" />
+
+              {/* Pavimento de cemento gris de la explanada */}
+              <LinearGradient id="concreteFloorGrad" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#94A3B8" />
+                <Stop offset="0.5" stopColor="#78879B" />
+                <Stop offset="1" stopColor="#64748B" />
               </LinearGradient>
-              <LinearGradient id="asphalt3DGrad" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#111C2D" />
-                <Stop offset="1" stopColor="#1E293B" />
+
+              {/* Gradiente perlado de la carrocería del Sedán Blanco */}
+              <LinearGradient id="whiteCarBodyGrad" x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0" stopColor="#FFFFFF" />
+                <Stop offset="0.65" stopColor="#F1F5F9" />
+                <Stop offset="1" stopColor="#CBD5E1" />
               </LinearGradient>
             </Defs>
 
-            {/* Cielo 3D y Horizonte Vial */}
-            <Rect x={0} y={0} width={VIEW3D_W} height={HORIZON_Y} fill="url(#sky3DGrad)" />
+            {/* 1. CIELO DIURNO Y RASCACIELOS DE FONDO (COMO EN LA IMAGEN) */}
+            <Rect x={0} y={0} width={VIEW3D_W} height={HORIZON_Y} fill="url(#daySkyGrad)" />
 
-            {/* Silueta de ciudad/montañas en el horizonte de la carretera */}
-            <Polygon
-              points={`0,${HORIZON_Y} 65,${HORIZON_Y - 22} 130,${HORIZON_Y - 12} 210,${HORIZON_Y - 34} 285,${HORIZON_Y - 16} 390,${HORIZON_Y - 38} 490,${HORIZON_Y - 18} 610,${HORIZON_Y - 30} ${VIEW3D_W},${HORIZON_Y - 14} ${VIEW3D_W},${HORIZON_Y}`}
-              fill="#0A1526"
-              stroke="rgba(0, 217, 245, 0.2)"
-              strokeWidth={1}
-            />
+            {/* Rascacielos 1 (Izquierda) */}
+            <Rect x={12} y={8} width={96} height={HORIZON_Y - 8} fill="#94A3B8" stroke="#475569" strokeWidth={1.5} />
+            {[18, 32, 46, 60, 74, 88].map((wy) => (
+              <Line key={wy} x1={18} y1={wy} x2={102} y2={wy} stroke="#E2E8F0" strokeWidth={4} strokeDasharray="10 4" />
+            ))}
 
-            {/* Terreno base bajo el horizonte */}
+            {/* Rascacielos 2 (Torre Alta Central-Izquierda) */}
+            <Rect x={135} y={2} width={118} height={HORIZON_Y - 2} fill="#64748B" stroke="#334155" strokeWidth={1.5} />
+            {[14, 26, 38, 50, 62, 74, 86, 98].map((wy) => (
+              <Line key={wy} x1={142} y1={wy} x2={246} y2={wy} stroke="#BAE6FD" strokeWidth={3.5} strokeDasharray="12 5" />
+            ))}
+
+            {/* Edificio Blanco Central */}
+            <Rect x={268} y={26} width={72} height={HORIZON_Y - 26} fill="#E2E8F0" stroke="#94A3B8" strokeWidth={1} />
+            {[36, 48, 60, 72, 84, 96].map((wy) => (
+              <Line key={wy} x1={274} y1={wy} x2={334} y2={wy} stroke="#64748B" strokeWidth={3} strokeDasharray="6 4" />
+            ))}
+
+            {/* Rascacielos 3 y 4 (Derecha con sombra diagonal como en la imagen) */}
+            <Rect x={485} y={4} width={110} height={HORIZON_Y - 4} fill="#94A3B8" stroke="#475569" strokeWidth={1.5} />
+            <Polygon points={`515,4 595,4 595,${HORIZON_Y} 495,${HORIZON_Y}`} fill="rgba(30, 41, 59, 0.45)" />
+            <Rect x={605} y={10} width={105} height={HORIZON_Y - 10} fill="#64748B" stroke="#334155" strokeWidth={1.5} />
+
+            {/* Tienda Roja "Stop Shop / AutoTest" en el horizonte (igual a la imagen) */}
+            <Rect x={252} y={78} width={225} height={44} fill="#334155" stroke="#1E293B" strokeWidth={1.5} />
+            <Rect x={248} y={74} width={233} height={15} rx={2} fill="#EF4444" stroke="#FFFFFF" strokeWidth={1} />
+            <SvgText x={295} y={85} fill="#FFFFFF" fontSize="10" fontWeight="bold">
+              Stop Shop • AutoTest
+            </SvgText>
+
+            {/* Muro perimetral con pilares beige y rejas */}
+            <Rect x={0} y={HORIZON_Y - 14} width={VIEW3D_W} height={16} fill="#C2B280" stroke="#78716C" strokeWidth={1} />
+
+            {/* 2. PISO DE CEMENTO GRIS DE LA EXPLANADA */}
             <Rect
               x={0}
               y={HORIZON_Y}
               width={VIEW3D_W}
               height={VIEW3D_H - HORIZON_Y}
-              fill="url(#ground3DGrad)"
+              fill="url(#concreteFloorGrad)"
             />
-
-            {/* Superficie 3D de la carretera */}
-            {scene3D.roadSlab ? (
-              <Polygon
-                points={scene3D.roadSlab.pointsStr}
-                fill="url(#asphalt3DGrad)"
-                stroke="#334155"
-                strokeWidth={2}
-              />
+            {world3D.concretePlaza ? (
+              <Polygon points={world3D.concretePlaza.pointsStr} fill="url(#concreteFloorGrad)" />
             ) : null}
 
-            {/* Bordillos viales norte y sur en perspectiva 3D */}
-            {scene3D.northCurb ? (
-              <Polygon points={scene3D.northCurb.pointsStr} fill="#F59E0B" opacity={0.75} />
-            ) : null}
-            {scene3D.southCurb ? (
-              <Polygon points={scene3D.southCurb.pointsStr} fill="#00D9F5" opacity={0.55} />
-            ) : null}
-
-            {/* Marcas viales de carril en perspectiva 3D */}
-            {scene3D.laneStripes.map((pts, idx) => (
-              <Polygon key={idx} points={pts} fill="rgba(241, 245, 249, 0.65)" />
+            {/* Líneas blancas de estacionamiento */}
+            {world3D.whiteBayLines.map((pts, i) => (
+              <Polygon key={i} points={pts} fill="rgba(255, 255, 255, 0.65)" />
             ))}
 
-            {/* Haz de luz de farolas delanteras sobre la carretera 3D */}
-            {scene3D.headlightCone ? (
-              <Polygon
-                points={scene3D.headlightCone}
-                fill={
-                  headlightMode === 'HIGH'
-                    ? 'rgba(186, 230, 253, 0.34)'
-                    : 'rgba(186, 230, 253, 0.18)'
-                }
-              />
-            ) : null}
+            {/* 3. HUELLAS DE NEUMÁTICOS SOBRE EL PAVIMENTO */}
+            {world3D.projectedTracks.map((pts, i) => (
+              <Polygon key={i} points={pts} fill="rgba(51, 65, 85, 0.38)" />
+            ))}
 
-            {/* Zona de Parqueo 3D Demarcada en el asfalto */}
-            {scene3D.parkingFloor ? (
+            {/* 4. FLECHAS AMARILLAS PINTADAS EN EL SUELO (COMO EN LA IMAGEN) */}
+            {world3D.yellowArrows.map((pts, i) => (
+              <Polygon
+                key={i}
+                points={pts}
+                fill="#FACC15"
+                stroke="#CA8A04"
+                strokeWidth={1}
+              />
+            ))}
+
+            {/* 5. CUADRO AZUL DE PARQUEO [ P ] EN EL PISO CON BORDE BLANCO */}
+            {world3D.blueParkingBox ? (
               <G>
                 <Polygon
-                  points={scene3D.parkingFloor.pointsStr}
-                  fill={
-                    parkedSuccess
-                      ? 'rgba(0, 245, 160, 0.42)'
-                      : alignmentPct >= 75
-                        ? 'rgba(0, 245, 160, 0.26)'
-                        : 'rgba(0, 217, 245, 0.18)'
-                  }
-                  stroke={PsychoPalette.mint}
-                  strokeWidth={3}
-                  strokeDasharray="10 5"
+                  points={world3D.blueParkingBox.pointsStr}
+                  fill={parkedSuccess ? '#10B981' : '#0284C7'}
+                  stroke="#FFFFFF"
+                  strokeWidth={3.5}
                 />
                 <SvgText
-                  x={scene3D.parkingFloor.centerSx}
-                  y={scene3D.parkingFloor.centerSy + 4}
-                  fill={PsychoPalette.mint}
-                  fontSize="16"
+                  x={world3D.blueParkingBox.centerSx}
+                  y={world3D.blueParkingBox.centerSy + 8}
+                  fill="#FFFFFF"
+                  fontSize="26"
                   fontWeight="bold"
                   textAnchor="middle">
-                  ZONA P (3D)
+                  P
                 </SvgText>
               </G>
             ) : null}
 
-            {/* Postes/balizas luminosas 3D en las 4 esquinas del parqueo */}
-            {scene3D.beaconPosts.map((bp, i) => (
-              <G key={i}>
-                <Line
-                  x1={bp.x1}
-                  y1={bp.y1}
-                  x2={bp.x2}
-                  y2={bp.y2}
-                  stroke={PsychoPalette.mint}
-                  strokeWidth={2.5}
-                />
-                <Circle cx={bp.x2} cy={bp.y2} r={3.5} fill="#FFFFFF" stroke={PsychoPalette.mint} strokeWidth={1.5} />
-              </G>
-            ))}
-
-            {/* Volúmenes 3D de carros estacionados, muros y nuestro vehículo */}
-            {scene3D.faces3D.map((f, idx) => (
-              <G key={idx}>
-                <Polygon
-                  points={f.pointsStr}
-                  fill={f.fill}
-                  stroke={f.stroke}
-                  strokeWidth={1.2}
-                />
-                {f.label && f.cx && f.cy ? (
-                  <SvgText
-                    x={f.cx}
-                    y={f.cy + 3}
-                    fill="#FFFFFF"
-                    fontSize="10"
-                    fontWeight="bold"
-                    textAnchor="middle">
-                    {f.label}
-                  </SvgText>
-                ) : null}
-              </G>
-            ))}
-
-            {/* MARCO SUPERIOR Y PILARES A DE LA CABINA DEL VEHÍCULO */}
-            <Path
-              d={`M 0 0 L ${VIEW3D_W} 0 L ${VIEW3D_W} 28 L ${VIEW3D_W - 42} ${VIEW3D_H} L ${VIEW3D_W} ${VIEW3D_H} L ${VIEW3D_W} 0`}
-              fill="#070D19"
-            />
-            <Polygon points={`0,0 52,0 16,${VIEW3D_H} 0,${VIEW3D_H}`} fill="#0B1324" stroke="#1E3150" strokeWidth={1.5} />
-            <Polygon
-              points={`${VIEW3D_W},0 ${VIEW3D_W - 52},0 ${VIEW3D_W - 16},${VIEW3D_H} ${VIEW3D_W},${VIEW3D_H}`}
-              fill="#0B1324"
-              stroke="#1E3150"
-              strokeWidth={1.5}
-            />
-
-            {/* PLUMILLAS LIMPIAPARABRISAS EN LA CABINA */}
-            {wipersOn ? (
+            {/* 6. LETRERO VERTICAL AZUL [ P ] SOBRE POSTE METÁLICO (COMO EN LA IMAGEN) */}
+            {world3D.signBase && world3D.signTop ? (
               <G>
                 <Line
-                  x1={210}
-                  y1={VIEW3D_H - 92}
-                  x2={175 + wiperAngle * 1.4}
-                  y2={VIEW3D_H - 210}
-                  stroke="#94A3B8"
-                  strokeWidth={3.5}
-                  strokeLinecap="round"
+                  x1={world3D.signBase.sx}
+                  y1={world3D.signBase.sy}
+                  x2={world3D.signTop.sx}
+                  y2={world3D.signTop.sy}
+                  stroke="#E2E8F0"
+                  strokeWidth={5}
                 />
-                <Line
-                  x1={470}
-                  y1={VIEW3D_H - 92}
-                  x2={435 + wiperAngle * 1.4}
-                  y2={VIEW3D_H - 210}
-                  stroke="#94A3B8"
-                  strokeWidth={3.5}
-                  strokeLinecap="round"
+                <Rect
+                  x={world3D.signTop.sx - 24}
+                  y={world3D.signTop.sy - 46}
+                  width={48}
+                  height={48}
+                  rx={5}
+                  fill="#0284C7"
+                  stroke="#FFFFFF"
+                  strokeWidth={2.5}
                 />
+                <SvgText
+                  x={world3D.signTop.sx}
+                  y={world3D.signTop.sy - 12}
+                  fill="#FFFFFF"
+                  fontSize="32"
+                  fontWeight="bold"
+                  textAnchor="middle">
+                  P
+                </SvgText>
               </G>
             ) : null}
+
+            {/* 7. CONOS DE TRÁFICO NARANJAS CON FRANJAS BLANCAS EN 3D */}
+            {world3D.projectedCones.map((c, idx) => {
+              const s = Math.max(0.38, Math.min(1.65, c.scale * 0.42));
+              const cx = c.sx;
+              const cy = c.sy;
+              return (
+                <G key={idx}>
+                  {/* Sombra y base roja/naranja del cono */}
+                  <Ellipse cx={cx} cy={cy + 2 * s} rx={15 * s} ry={6 * s} fill="rgba(15, 23, 42, 0.35)" />
+                  <Ellipse cx={cx} cy={cy} rx={14 * s} ry={5.5 * s} fill="#EA580C" stroke="#9A3412" strokeWidth={1} />
+                  {/* Cuerpo cónico naranja */}
+                  <Polygon
+                    points={`${cx - 11 * s},${cy} ${cx - 3.5 * s},${cy - 34 * s} ${cx + 3.5 * s},${cy - 34 * s} ${cx + 11 * s},${cy}`}
+                    fill="#F97316"
+                    stroke="#C2410C"
+                    strokeWidth={0.8}
+                  />
+                  {/* Franja blanca reflectiva inferior */}
+                  <Polygon
+                    points={`${cx - 9 * s},${cy - 7 * s} ${cx - 7 * s},${cy - 14 * s} ${cx + 7 * s},${cy - 14 * s} ${cx + 9 * s},${cy - 7 * s}`}
+                    fill="#FFFFFF"
+                  />
+                  {/* Franja blanca reflectiva superior */}
+                  <Polygon
+                    points={`${cx - 6 * s},${cy - 20 * s} ${cx - 4.3 * s},${cy - 27 * s} ${cx + 4.3 * s},${cy - 27 * s} ${cx + 6 * s},${cy - 20 * s}`}
+                    fill="#FFFFFF"
+                  />
+                </G>
+              );
+            })}
+
+            {/* 8. SEDÁN BLANCO 3D EN TERCERA PERSONA (IDÉNTICO AL CARRO "KNIGHTS" DE LA IMAGEN) */}
+            <G transform={`translate(${VIEW3D_W * 0.56}, ${VIEW3D_H * 0.67}) rotate(${steerAngleDeg * 0.28})`}>
+              {/* Huellas de llantas inmediatas bajo el carro */}
+              <Line x1={-66} y1={15} x2={-38} y2={140} stroke="rgba(51, 65, 85, 0.42)" strokeWidth={18} strokeDasharray="4 2" />
+              <Line x1={68} y1={15} x2={96} y2={140} stroke="rgba(51, 65, 85, 0.42)" strokeWidth={18} strokeDasharray="4 2" />
+
+              {/* Sombra 3D bajo el Sedán Blanco */}
+              <Polygon
+                points="-96,-82 78,-88 106,58 -82,66"
+                fill="rgba(15, 23, 42, 0.48)"
+              />
+
+              {/* Rueda Delantera Izquierda (Gira con el volante) */}
+              <G transform={`translate(-84, -52) rotate(${steerAngleDeg * 0.65})`}>
+                <Rect x={-8} y={-20} width={16} height={40} rx={5} fill="#0F172A" stroke="#94A3B8" strokeWidth={2} />
+                <Ellipse cx={-6} cy={0} rx={4} ry={13} fill="#E2E8F0" />
+              </G>
+
+              {/* Rueda Trasera Izquierda */}
+              <G transform="translate(-76, 26)">
+                <Rect x={-8} y={-20} width={16} height={40} rx={5} fill="#0F172A" stroke="#94A3B8" strokeWidth={2} />
+                <Ellipse cx={-6} cy={0} rx={4} ry={13} fill="#E2E8F0" />
+              </G>
+
+              {/* Carrocería Principal del Sedán Blanco */}
+              <Polygon
+                points="-82,-76 66,-82 94,42 84,58 -68,64 -82,46"
+                fill="url(#whiteCarBodyGrad)"
+                stroke="#94A3B8"
+                strokeWidth={2}
+              />
+
+              {/* Costado Izquierdo en perspectiva con ventanas laterales y espejo */}
+              <Polygon
+                points="-82,-70 -56,-84 -42,10 -74,38"
+                fill="#E2E8F0"
+                stroke="#94A3B8"
+                strokeWidth={1.5}
+              />
+              {/* Ventanas laterales izquierdas polarizadas */}
+              <Polygon
+                points="-74,-58 -54,-72 -48,-12 -70,4"
+                fill="#0F172A"
+                stroke="#CBD5E1"
+                strokeWidth={2}
+              />
+              <Line x1={-61} y1={-66} x2={-59} y2={-4} stroke="#E2E8F0" strokeWidth={2.5} />
+
+              {/* Espejo retrovisor lateral izquierdo del sedán */}
+              <Ellipse cx={-82} cy={-56} rx={9} ry={5} fill="#FFFFFF" stroke="#64748B" strokeWidth={1.5} />
+
+              {/* Techo Blanco con Sunroof Negro Panorámico */}
+              <Polygon
+                points="-54,-78 48,-82 64,-8 -42,-4"
+                fill="#F8FAFC"
+                stroke="#CBD5E1"
+                strokeWidth={1.5}
+              />
+              {/* Quemacocos / Sunroof Negro */}
+              <Polygon
+                points="-44,-70 36,-73 42,-48 -40,-45"
+                fill="#0F172A"
+                stroke="#475569"
+                strokeWidth={1.5}
+              />
+
+              {/* Parabrisas Trasero Polarizado */}
+              <Polygon
+                points="-40,-38 56,-42 70,4 -32,8"
+                fill="#1E293B"
+                stroke="#0F172A"
+                strokeWidth={3}
+              />
+
+              {/* Faros Traseros Rojos LED (Izquierdo y Derecho como en la imagen) */}
+              <Polygon
+                points="-66,18 -26,22 -24,36 -66,34"
+                fill={brakeActive ? '#FF1E42' : '#DC2626'}
+                stroke="#7F1D1D"
+                strokeWidth={1.5}
+              />
+              <Polygon
+                points="-60,22 -32,25 -32,31 -60,29"
+                fill={gear === 'R' ? '#FFFFFF' : leftBlinkOn ? '#FACC15' : '#F97316'}
+              />
+
+              <Polygon
+                points="46,14 86,10 88,24 48,28"
+                fill={brakeActive ? '#FF1E42' : '#DC2626'}
+                stroke="#7F1D1D"
+                strokeWidth={1.5}
+              />
+              <Polygon
+                points="52,18 80,15 80,21 52,24"
+                fill={gear === 'R' ? '#FFFFFF' : rightBlinkOn ? '#FACC15' : '#F97316'}
+              />
+
+              {/* Placa Trasera "KNIGHTS" idéntica a la imagen */}
+              <Rect x={-16} y={24} width={52} height={16} rx={2} fill="#FFFFFF" stroke="#1E293B" strokeWidth={1.5} />
+              <SvgText x={10} y={36} fill="#0F172A" fontSize="9.5" fontWeight="bold" textAnchor="middle">
+                KNIGHTS
+              </SvgText>
+
+              {/* Parachoques trasero con moldura negra y doble escape */}
+              <Line x1={-62} y1={48} x2={82} y2={42} stroke="#1E293B" strokeWidth={3.5} />
+              <Rect x={-64} y={54} width={148} height={8} rx={4} fill="#1E293B" />
+              <Ellipse cx={-48} cy={58} rx={7} ry={3} fill="#94A3B8" stroke="#0F172A" strokeWidth={1} />
+              <Ellipse cx={68} cy={54} rx={7} ry={3} fill="#94A3B8" stroke="#0F172A" strokeWidth={1} />
+            </G>
           </Svg>
 
-          {/* ==================== LOS 3 ESPEJOS RETROVISORES DE LA CABINA ==================== */}
-          <View style={styles.mirrorsTopOverlay} pointerEvents="none">
-            {/* 1. ESPEJO RETROVISOR LATERAL IZQUIERDO */}
-            <View style={styles.sideMirrorBox}>
-              <View style={styles.mirrorHeaderRow}>
-                <Ionicons name="eye-outline" size={10} color={PsychoPalette.cyan} />
-                <Text style={styles.mirrorLabelText}>ESPEJO IZQ (L)</Text>
-              </View>
-              <View style={styles.mirrorGlass}>
-                <Svg width="100%" height="100%" viewBox="0 0 90 42">
-                  <Rect x={0} y={0} width={90} height={16} fill="#061020" />
-                  <Rect x={0} y={16} width={90} height={26} fill="#162235" />
-                  <Line x1={45} y1={16} x2={10} y2={42} stroke={PsychoPalette.cyan} strokeWidth={1.5} strokeDasharray="3 3" />
-                  <Polygon points="68,18 90,22 90,42 62,42" fill="#1D4ED8" stroke="#93C5FD" strokeWidth={1} />
-                  {leftBlinkOn ? <Circle cx={65} cy={26} r={4} fill="#F59E0B" /> : null}
-                </Svg>
-              </View>
-            </View>
-
-            {/* 2. ESPEJO RETROVISOR CENTRAL PANORÁMICO (CON SENSOR DE REVERSA) */}
-            <View
-              style={[
-                styles.centerMirrorBox,
-                gear === 'R' && { borderColor: PsychoPalette.amberWarning },
-              ]}>
-              <View style={styles.mirrorHeaderRow}>
-                <Ionicons name="car-outline" size={11} color={PsychoPalette.mint} />
-                <Text style={styles.mirrorLabelText}>
-                  ESPEJO RETROVISOR CENTRAL • DISTANCIA TRASERA: {rearProximityMeters} m
-                </Text>
-              </View>
-              <View style={styles.centerMirrorGlass}>
-                <Svg width="100%" height="100%" viewBox="0 0 180 38">
-                  <Rect x={0} y={0} width={180} height={14} fill="#050D1A" />
-                  <Rect x={0} y={14} width={180} height={24} fill="#131F33" />
-                  <Line x1={90} y1={14} x2={35} y2={38} stroke="rgba(0,245,160,0.6)" strokeWidth={1.5} />
-                  <Line x1={90} y1={14} x2={145} y2={38} stroke="rgba(0,245,160,0.6)" strokeWidth={1.5} />
-                  {/* Guías de cámara/espejo de reversa */}
-                  <Line x1={55} y1={24} x2={125} y2={24} stroke="#F59E0B" strokeWidth={1} strokeDasharray="4 3" />
-                  <Line x1={42} y1={33} x2={138} y2={33} stroke="#EF4444" strokeWidth={1} />
-                </Svg>
-              </View>
-            </View>
-
-            {/* 3. ESPEJO RETROVISOR LATERAL DERECHO + MINI RADAR */}
-            <View style={styles.rightMirrorAndRadarRow}>
-              <View style={styles.sideMirrorBox}>
-                <View style={styles.mirrorHeaderRow}>
-                  <Text style={styles.mirrorLabelText}>ESPEJO DER (R)</Text>
-                  <Ionicons name="eye-outline" size={10} color={PsychoPalette.cyan} />
-                </View>
-                <View style={styles.mirrorGlass}>
-                  <Svg width="100%" height="100%" viewBox="0 0 90 42">
-                    <Rect x={0} y={0} width={90} height={16} fill="#061020" />
-                    <Rect x={0} y={16} width={90} height={26} fill="#162235" />
-                    <Line x1={45} y1={16} x2={80} y2={42} stroke={PsychoPalette.mint} strokeWidth={1.5} strokeDasharray="3 3" />
-                    <Polygon points="0,22 22,18 28,42 0,42" fill="#1D4ED8" stroke="#93C5FD" strokeWidth={1} />
-                    {rightBlinkOn ? <Circle cx={25} cy={26} r={4} fill="#F59E0B" /> : null}
-                  </Svg>
-                </View>
-              </View>
-
-              {/* MINI-RADAR TÁCTICO PARA PRECISIÓN DE PARQUEO */}
-              <View style={styles.miniRadarBox}>
-                <Svg width={78} height={50} viewBox={`0 0 ${WORLD_W} ${WORLD_H}`}>
-                  <Rect x={0} y={0} width={WORLD_W} height={WORLD_H} fill="#050A14" />
-                  <Rect
-                    x={pz.x}
-                    y={pz.y}
-                    width={pz.w}
-                    height={pz.h}
-                    fill="rgba(0,245,160,0.3)"
-                    stroke={PsychoPalette.mint}
-                    strokeWidth={12}
-                  />
-                  {scenario.obstacles.map((o, idx) => (
-                    <Rect key={idx} x={o.x} y={o.y} width={o.w} height={o.h} fill="#EF4444" />
-                  ))}
-                  <G transform={`translate(${carState.x}, ${carState.y}) rotate(${carAngleDeg})`}>
-                    <Rect
-                      x={-CAR_LENGTH / 2}
-                      y={-CAR_WIDTH / 2}
-                      width={CAR_LENGTH}
-                      height={CAR_WIDTH}
-                      fill={PsychoPalette.cyan}
-                    />
-                  </G>
-                </Svg>
-              </View>
-            </View>
-          </View>
-
-          {/* ALERTA DE CABINA (EJ: FRENO DE MANO PUESTO O MOTOR APAGADO) */}
-          {cabinAlert || collisionFlash ? (
-            <View style={styles.cabinCenterAlertBox} pointerEvents="none">
-              <Ionicons name="warning" size={15} color="#FFFFFF" />
-              <Text style={styles.cabinCenterAlertText}>
-                {collisionFlash ? '¡IMPACTO DETECTADO EN LA VÍA 3D!' : cabinAlert}
+          {/* ESPEJO RETROVISOR SUPERIOR Y BARRA RÁPIDA DE MANDOS DE CABINA */}
+          <View style={styles.topCabinOverlay} pointerEvents="box-none">
+            {/* Espejo Retrovisor con sensor de reversa */}
+            <View style={styles.rearMirrorPill}>
+              <Ionicons name="eye-outline" size={13} color={PsychoPalette.mint} />
+              <Text style={styles.rearMirrorText}>
+                ESPEJO RETROVISOR: {rearDistMeters}m • {speedKmh} km/h
               </Text>
             </View>
-          ) : null}
 
-          {/* ==================== PARTE INFERIOR: CABINA DEL VEHÍCULO CON MANDOS DE CARRO NORMAL ==================== */}
-          <View style={styles.cabinDashboardWrapper}>
-            {/* FILA DE COMANDOS DE UN CARRO NORMAL (MOTOR, CINTURÓN, FRENO MANO, DIRECCIONALES, LUCES, LIMPIABRISAS, PITO) */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.carCommandsBar}>
-              {/* 1. ENCENDIDO MOTOR START/STOP */}
+            {/* Botones rápidos de mandos del carro */}
+            <View style={styles.quickCarCmds}>
               <Pressable
                 onPress={() => {
-                  setEngineOn((prev) => !prev);
-                  playRightSignal();
-                }}
-                style={[styles.cmdBtn, engineOn ? styles.cmdBtnMint : styles.cmdBtnRed]}>
-                <Ionicons
-                  name="power"
-                  size={13}
-                  color={engineOn ? PsychoPalette.mint : PsychoPalette.redSignalBright}
-                />
-                <Text style={styles.cmdBtnText}>{engineOn ? 'MOTOR: ON' : 'START/STOP'}</Text>
-              </Pressable>
-
-              {/* 2. CINTURÓN DE SEGURIDAD */}
-              <Pressable
-                onPress={() => {
-                  setSeatbeltOn((prev) => !prev);
+                  setTurnSignal((p) => (p === 'LEFT' ? 'NONE' : 'LEFT'));
                   playLeftSignal();
                 }}
-                style={[styles.cmdBtn, seatbeltOn ? styles.cmdBtnMint : styles.cmdBtnAmber]}>
-                <Ionicons
-                  name="shield-checkmark"
-                  size={13}
-                  color={seatbeltOn ? PsychoPalette.mint : PsychoPalette.amberWarning}
-                />
-                <Text style={styles.cmdBtnText}>
-                  {seatbeltOn ? 'CINTURÓN OK' : 'ABROCHAR CINT.'}
-                </Text>
+                style={[styles.miniCmdBtn, leftBlinkOn && styles.miniCmdBtnActive]}>
+                <Text style={styles.miniCmdText}>◀</Text>
               </Pressable>
 
-              {/* 3. FRENO DE MANO ((P)) */}
               <Pressable
                 onPress={() => {
-                  setHandbrakeOn((prev) => !prev);
-                  playLeftSignal();
-                }}
-                style={[styles.cmdBtn, handbrakeOn ? styles.cmdBtnRed : styles.cmdBtnCyan]}>
-                <Ionicons
-                  name="alert-circle"
-                  size={13}
-                  color={handbrakeOn ? PsychoPalette.redSignalBright : PsychoPalette.cyan}
-                />
-                <Text style={styles.cmdBtnText}>
-                  {handbrakeOn ? '((P)) FRENO MANO ON' : '((P)) LIBRE'}
-                </Text>
-              </Pressable>
-
-              {/* 4. DIRECCIONAL IZQUIERDA */}
-              <Pressable
-                onPress={() => {
-                  setTurnSignal((prev) => (prev === 'LEFT' ? 'NONE' : 'LEFT'));
-                  playLeftSignal();
-                }}
-                style={[styles.cmdBtn, leftBlinkOn && styles.cmdBtnAmber]}>
-                <Ionicons
-                  name="arrow-back-circle"
-                  size={14}
-                  color={leftBlinkOn ? PsychoPalette.amberWarning : PsychoPalette.textSecondary}
-                />
-                <Text style={styles.cmdBtnText}>DIR IZQ</Text>
-              </Pressable>
-
-              {/* 5. LUCES DE PARQUEO / EMERGENCIA */}
-              <Pressable
-                onPress={() => {
-                  setTurnSignal((prev) => (prev === 'HAZARD' ? 'NONE' : 'HAZARD'));
+                  setTurnSignal((p) => (p === 'HAZARD' ? 'NONE' : 'HAZARD'));
                   playError();
                 }}
-                style={[styles.cmdBtn, turnSignal === 'HAZARD' && styles.cmdBtnRed]}>
-                <Ionicons
-                  name="warning"
-                  size={13}
-                  color={
-                    turnSignal === 'HAZARD' ? PsychoPalette.redSignalBright : PsychoPalette.amberWarning
-                  }
-                />
-                <Text style={styles.cmdBtnText}>ESTACIONARIAS</Text>
+                style={[styles.miniCmdBtn, turnSignal === 'HAZARD' && styles.miniCmdBtnDanger]}>
+                <Ionicons name="warning" size={12} color="#FFFFFF" />
               </Pressable>
 
-              {/* 6. DIRECCIONAL DERECHA */}
               <Pressable
                 onPress={() => {
-                  setTurnSignal((prev) => (prev === 'RIGHT' ? 'NONE' : 'RIGHT'));
+                  setTurnSignal((p) => (p === 'RIGHT' ? 'NONE' : 'RIGHT'));
                   playRightSignal();
                 }}
-                style={[styles.cmdBtn, rightBlinkOn && styles.cmdBtnAmber]}>
-                <Text style={styles.cmdBtnText}>DIR DER</Text>
-                <Ionicons
-                  name="arrow-forward-circle"
-                  size={14}
-                  color={rightBlinkOn ? PsychoPalette.amberWarning : PsychoPalette.textSecondary}
-                />
+                style={[styles.miniCmdBtn, rightBlinkOn && styles.miniCmdBtnActive]}>
+                <Text style={styles.miniCmdText}>▶</Text>
               </Pressable>
 
-              {/* 7. LUCES DELANTERAS (OFF / BAJAS / ALTAS) */}
               <Pressable
-                onPress={() => {
-                  setHeadlightMode((prev) =>
-                    prev === 'OFF' ? 'LOW' : prev === 'LOW' ? 'HIGH' : 'OFF'
-                  );
-                  playRightSignal();
-                }}
-                style={[styles.cmdBtn, headlightMode !== 'OFF' && styles.cmdBtnCyan]}>
-                <Ionicons
-                  name="flashlight"
-                  size={13}
-                  color={headlightMode !== 'OFF' ? PsychoPalette.cyan : PsychoPalette.textSecondary}
-                />
-                <Text style={styles.cmdBtnText}>
-                  LUCES: {headlightMode === 'OFF' ? 'OFF' : headlightMode === 'LOW' ? 'BAJAS' : 'ALTAS'}
-                </Text>
+                onPress={() => setLightsOn((p) => !p)}
+                style={[styles.miniCmdBtn, lightsOn && styles.miniCmdBtnCyan]}>
+                <Ionicons name="flashlight" size={12} color="#FFFFFF" />
               </Pressable>
 
-              {/* 8. LIMPIAPARABRISAS */}
               <Pressable
-                onPress={() => setWipersOn((prev) => !prev)}
-                style={[styles.cmdBtn, wipersOn && styles.cmdBtnCyan]}>
-                <Ionicons
-                  name="rainy-outline"
-                  size={13}
-                  color={wipersOn ? PsychoPalette.cyan : PsychoPalette.textSecondary}
-                />
-                <Text style={styles.cmdBtnText}>{wipersOn ? 'PLUMILLAS ON' : 'PLUMILLAS'}</Text>
+                onPress={() => setSeatbeltOn((p) => !p)}
+                style={[styles.miniCmdBtn, seatbeltOn && styles.miniCmdBtnCyan]}>
+                <Ionicons name="shield-checkmark" size={12} color="#FFFFFF" />
               </Pressable>
 
-              {/* 9. CLAXON / PITO */}
               <Pressable
-                onPress={() => {
-                  playLeftSignal();
-                  setTimeout(() => playRightSignal(), 90);
-                }}
-                style={styles.cmdBtn}>
-                <Ionicons name="megaphone-outline" size={13} color={PsychoPalette.amberWarning} />
-                <Text style={styles.cmdBtnText}>PITO</Text>
+                onPress={() => setHandbrakeOn((p) => !p)}
+                style={[styles.miniCmdBtn, handbrakeOn && styles.miniCmdBtnDanger]}>
+                <Text style={styles.miniCmdText}>(P)</Text>
               </Pressable>
-            </ScrollView>
-
-            {/* FILA INFERIOR DE CABINA: JOYSTICK COMPACTO + VOLANTE Y TABLERO CENTRAL + CAJA Y PEDALES */}
-            <View style={styles.cabinMainControlsRow}>
-              {/* ESQUINA INFERIOR IZQUIERDA: JOYSTICK DE DIRECCIÓN CON CÍRCULO MÁS PEQUEÑO */}
-              <View style={styles.joystickPanel}>
-                <Text style={styles.controlLabel}>JOYSTICK COMPACTO</Text>
-                <GestureDetector gesture={joystickGesture}>
-                  <View style={styles.joystickBase}>
-                    <View style={styles.joystickCrosshairH} />
-                    <View style={styles.joystickCrosshairV} />
-                    <View
-                      style={[
-                        styles.joystickKnobSmall,
-                        {
-                          transform: [
-                            { translateX: joystickKnob.x },
-                            { translateY: joystickKnob.y },
-                          ],
-                        },
-                      ]}>
-                      <View style={styles.joystickCenterDot} />
-                    </View>
-                  </View>
-                </GestureDetector>
-                <Text style={styles.joystickAngleReadout}>
-                  {steerAngleDeg === 0
-                    ? '0° RECTO'
-                    : steerAngleDeg < 0
-                      ? `IZQ ${steerAngleDeg}°`
-                      : `DER +${steerAngleDeg}°`}
-                </Text>
-              </View>
-
-              {/* CENTRO DE LA CABINA: VOLANTE REALISTA QUE GIRA + CLUSTER DIGITAL DE INSTRUMENTOS */}
-              <View style={styles.steeringAndClusterCenter}>
-                <View style={styles.instrumentCluster}>
-                  <View style={styles.clusterSideItem}>
-                    <Text style={styles.clusterLabel}>RPM</Text>
-                    <Text style={[styles.clusterValue, { color: PsychoPalette.cyan }]}>{rpm}</Text>
-                  </View>
-
-                  {/* Volante gráfico de la cabina que rota con la dirección */}
-                  <View style={styles.steeringWheelWrap}>
-                    <Svg
-                      width={68}
-                      height={68}
-                      viewBox="0 0 80 80"
-                      style={{ transform: [{ rotate: `${steerAngleDeg * 2.2}deg` }] }}>
-                      <Circle
-                        cx={40}
-                        cy={40}
-                        r={33}
-                        fill="none"
-                        stroke="#1E293B"
-                        strokeWidth={9}
-                      />
-                      <Circle
-                        cx={40}
-                        cy={40}
-                        r={33}
-                        fill="none"
-                        stroke={PsychoPalette.cyan}
-                        strokeWidth={2}
-                      />
-                      {/* Marcador superior de centrado del volante */}
-                      <Rect x={37} y={3} width={6} height={9} rx={2} fill={PsychoPalette.mint} />
-                      {/* Radios del volante */}
-                      <Line x1={10} y1={40} x2={70} y2={40} stroke="#334155" strokeWidth={6} />
-                      <Line x1={40} y1={40} x2={40} y2={72} stroke="#334155" strokeWidth={6} />
-                      <Circle cx={40} cy={40} r={11} fill="#0F172A" stroke={PsychoPalette.mint} strokeWidth={2} />
-                    </Svg>
-                  </View>
-
-                  <View style={styles.clusterSideItem}>
-                    <Text style={styles.clusterLabel}>VELOCIDAD</Text>
-                    <Text style={[styles.clusterValue, { color: PsychoPalette.mint }]}>
-                      {speedKmh} <Text style={{ fontSize: 9 }}>km/h</Text>
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.clusterIndicatorsStrip}>
-                  <Text
-                    style={[
-                      styles.clusterIconTag,
-                      { color: leftBlinkOn ? PsychoPalette.mint : PsychoPalette.textMuted },
-                    ]}>
-                    ◀
-                  </Text>
-                  <Text style={styles.clusterGearBadge}>
-                    MARCHA: {handbrakeOn ? 'P' : gear} • {elapsedSec.toFixed(1)}s
-                  </Text>
-                  <Text
-                    style={[
-                      styles.clusterIconTag,
-                      { color: rightBlinkOn ? PsychoPalette.mint : PsychoPalette.textMuted },
-                    ]}>
-                    ▶
-                  </Text>
-                </View>
-              </View>
-
-              {/* ESQUINA INFERIOR DERECHA: TRANSMISIÓN D/R Y PEDALES DE FRENO Y ACELERADOR */}
-              <View style={styles.pedalsCluster}>
-                <View style={styles.gearSelectorColumn}>
-                  <Text style={styles.controlLabel}>CAJA</Text>
-                  <Pressable
-                    onPress={() => setGear('D')}
-                    style={[styles.gearBtn, gear === 'D' && styles.gearBtnActiveD]}>
-                    <Text style={[styles.gearBtnText, gear === 'D' && styles.gearBtnTextActive]}>
-                      D • AVANCE
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setGear('R')}
-                    style={[styles.gearBtn, gear === 'R' && styles.gearBtnActiveR]}>
-                    <Text style={[styles.gearBtnText, gear === 'R' && styles.gearBtnTextActive]}>
-                      R • REVERSA
-                    </Text>
-                  </Pressable>
-                </View>
-
-                {/* PEDAL DE FRENO */}
-                <Pressable
-                  onPressIn={() => setBrakeActive(true)}
-                  onPressOut={() => setBrakeActive(false)}
-                  style={[styles.pedalBox, styles.brakePedal, brakeActive && styles.brakePedalActive]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Pedal de Freno y Reversa">
-                  <Ionicons name="hand-left-outline" size={16} color="#FFFFFF" />
-                  <Text style={styles.pedalTitle}>FRENO</Text>
-                  <Text style={styles.pedalSub}>REV</Text>
-                </Pressable>
-
-                {/* PEDAL DE ACELERADOR */}
-                <Pressable
-                  onPressIn={() => setGasActive(true)}
-                  onPressOut={() => setGasActive(false)}
-                  style={[styles.pedalBox, styles.gasPedal, gasActive && styles.gasPedalActive]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Pedal de Acelerador">
-                  <Ionicons name="speedometer-outline" size={16} color={PsychoPalette.bgPrimary} />
-                  <Text style={[styles.pedalTitle, { color: PsychoPalette.bgPrimary }]}>ACEL</Text>
-                  <Text style={[styles.pedalSub, { color: PsychoPalette.bgPrimary }]}>
-                    {gear === 'D' ? 'AVANCE' : 'RETROC'}
-                  </Text>
-                </Pressable>
-              </View>
             </View>
           </View>
 
-          {/* MODAL DE ÉXITO AL ESTACIONAR EN 3D */}
+          {/* ==================== DERECHA: PALANCA DE CAMBIOS 3D METÁLICA (COMO EN LA IMAGEN) ==================== */}
+          <View style={styles.shifterRightContainer}>
+            <Pressable
+              onPress={() => {
+                const nextG = gear === 'D' ? 'R' : 'D';
+                setGear(nextG);
+                playRightSignal();
+              }}
+              style={styles.shifterPressable}
+              accessibilityRole="button"
+              accessibilityLabel="Palanca de cambios Avance y Reversa">
+              <Svg width={96} height={122} viewBox="0 0 96 122">
+                {/* Base circular metálica cromada con ranuras en H */}
+                <Ellipse cx={48} cy={92} rx={38} ry={22} fill="#CBD5E1" stroke="#475569" strokeWidth={2.5} />
+                <Ellipse cx={48} cy={90} rx={32} ry={17} fill="#94A3B8" stroke="#1E293B" strokeWidth={1.5} />
+                {/* Rejilla en H negra */}
+                <Path
+                  d="M 30 82 L 30 98 M 48 80 L 48 100 M 66 82 L 66 98 M 30 90 L 66 90"
+                  stroke="#0F172A"
+                  strokeWidth={4.5}
+                  strokeLinecap="round"
+                />
+
+                {/* Barra cromada de la palanca */}
+                <Line
+                  x1={48}
+                  y1={90}
+                  x2={48}
+                  y2={gear === 'D' ? 42 : 58}
+                  stroke="#E2E8F0"
+                  strokeWidth={9}
+                  strokeLinecap="round"
+                />
+
+                {/* Pomo esférico negro 3D con diagrama R 2 4 / 1 3 5 arriba (igual a la imagen) */}
+                <G transform={`translate(0, ${gear === 'D' ? 0 : 14})`}>
+                  <Circle cx={48} cy={34} r={28} fill="#1E293B" stroke="#94A3B8" strokeWidth={2.5} />
+                  <Circle cx={48} cy={28} r={20} fill="#0F172A" stroke="#CBD5E1" strokeWidth={1.5} />
+                  <SvgText x={48} y={21} fill="#FFFFFF" fontSize="7.5" fontWeight="bold" textAnchor="middle">
+                    R  2  4
+                  </SvgText>
+                  <Line x1={35} y1={26} x2={61} y2={26} stroke="#FFFFFF" strokeWidth={1.2} />
+                  <SvgText x={48} y={35} fill="#FFFFFF" fontSize="7.5" fontWeight="bold" textAnchor="middle">
+                    1  3  5
+                  </SvgText>
+                </G>
+              </Svg>
+              <View
+                style={[
+                  styles.gearStateBadge,
+                  gear === 'D' ? styles.gearStateBadgeD : styles.gearStateBadgeR,
+                ]}>
+                <Text style={styles.gearStateBadgeText}>
+                  {gear === 'D' ? 'MARCHA: D (AVANCE)' : 'MARCHA: R (REVERSA)'}
+                </Text>
+              </View>
+            </Pressable>
+          </View>
+
+          {/* ==================== CONTROLES INFERIORES IDÉNTICOS A LA IMAGEN: VOLANTE 3D + PEDALES METÁLICOS ==================== */}
+          <View style={styles.bottomControlsOverlay} pointerEvents="box-none">
+            {/* ESQUINA INFERIOR IZQUIERDA: VOLANTE DEPORTIVO 3D NEGRO DE 3 RADIOS */}
+            <View style={styles.steeringWheelZone}>
+              <GestureDetector gesture={steeringWheelGesture}>
+                <View style={styles.steeringWheelTouchBox}>
+                  <Svg
+                    width={126}
+                    height={126}
+                    viewBox="0 0 130 130"
+                    style={{ transform: [{ rotate: `${wheelVisualRotateDeg}deg` }] }}>
+                    {/* Aro exterior del volante negro con relieve */}
+                    <Circle
+                      cx={65}
+                      cy={65}
+                      r={54}
+                      fill="none"
+                      stroke="#0F172A"
+                      strokeWidth={15}
+                    />
+                    <Circle
+                      cx={65}
+                      cy={65}
+                      r={54}
+                      fill="none"
+                      stroke="#334155"
+                      strokeWidth={4}
+                    />
+                    {/* 3 Radios deportivos plateados/grises (como el volante de la imagen) */}
+                    <Polygon
+                      points="16,58 46,52 46,74 18,74"
+                      fill="#64748B"
+                      stroke="#1E293B"
+                      strokeWidth={1.5}
+                    />
+                    <Polygon
+                      points="114,58 84,52 84,74 112,74"
+                      fill="#64748B"
+                      stroke="#1E293B"
+                      strokeWidth={1.5}
+                    />
+                    <Polygon
+                      points="54,82 76,82 70,116 60,116"
+                      fill="#64748B"
+                      stroke="#1E293B"
+                      strokeWidth={1.5}
+                    />
+                    {/* Centro acolchado del volante y emblema metálico */}
+                    <Circle
+                      cx={65}
+                      cy={65}
+                      r={24}
+                      fill="#1E293B"
+                      stroke="#94A3B8"
+                      strokeWidth={2}
+                    />
+                    <Circle cx={65} cy={65} r={8} fill="#CBD5E1" />
+                  </Svg>
+                </View>
+              </GestureDetector>
+              <View style={styles.wheelAnglePill}>
+                <Text style={styles.wheelAnglePillText}>
+                  GIRO: {steerAngleDeg > 0 ? `+${steerAngleDeg}°` : `${steerAngleDeg}°`}
+                </Text>
+              </View>
+            </View>
+
+            {/* ESQUINA INFERIOR DERECHA: PEDALES METÁLICOS PERFORADOS (FRENO HORIZONTAL + ACELERADOR VERTICAL) */}
+            <View style={styles.metallicPedalsRow}>
+              {/* PEDAL DE FRENO METÁLICO PERFORADO (IZQUIERDA) */}
+              <Pressable
+                onPressIn={() => setBrakeActive(true)}
+                onPressOut={() => setBrakeActive(false)}
+                style={[
+                  styles.metallicBrakePressable,
+                  brakeActive && { transform: [{ scale: 0.93 }] },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Pedal de Freno">
+                <Svg width={94} height={64} viewBox="0 0 94 64">
+                  <Rect
+                    x={3}
+                    y={4}
+                    width={88}
+                    height={56}
+                    rx={10}
+                    fill={brakeActive ? '#FCA5A5' : '#E2E8F0'}
+                    stroke="#1E293B"
+                    strokeWidth={2.5}
+                  />
+                  {/* Perforaciones circulares antideslizantes */}
+                  {[16, 30, 44, 58, 72].map((cx) =>
+                    [16, 30].map((cy) => (
+                      <Circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={3.5} fill="#334155" />
+                    ))
+                  )}
+                  <Circle cx={16} cy={44} r={3.5} fill="#334155" />
+                  <Circle cx={30} cy={44} r={3.5} fill="#334155" />
+                  {/* Recorte inferior derecho igual al pedal de la imagen */}
+                  <Polygon
+                    points="46,38 82,38 82,54 38,54"
+                    fill="#64748B"
+                    stroke="#1E293B"
+                    strokeWidth={1.5}
+                  />
+                </Svg>
+                <Text style={styles.pedalCaption}>FRENO</Text>
+              </Pressable>
+
+              {/* PEDAL DE ACELERADOR METÁLICO VERTICAL PERFORADO (DERECHA) */}
+              <Pressable
+                onPressIn={() => setGasActive(true)}
+                onPressOut={() => setGasActive(false)}
+                style={[
+                  styles.metallicGasPressable,
+                  gasActive && { transform: [{ scale: 0.93 }] },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Pedal de Acelerador">
+                <Svg width={62} height={106} viewBox="0 0 62 106">
+                  <Rect
+                    x={6}
+                    y={4}
+                    width={50}
+                    height={98}
+                    rx={10}
+                    fill={gasActive ? '#86EFAC' : '#E2E8F0'}
+                    stroke="#1E293B"
+                    strokeWidth={2.5}
+                  />
+                  {/* Perforaciones circulares antideslizantes */}
+                  {[20, 32, 44].map((cx) =>
+                    [18, 32, 46, 60].map((cy) => (
+                      <Circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={3.5} fill="#334155" />
+                    ))
+                  )}
+                  {/* Recorte triangular inferior izquierdo igual al pedal de la imagen */}
+                  <Polygon
+                    points="12,68 42,94 12,94"
+                    fill="#64748B"
+                    stroke="#1E293B"
+                    strokeWidth={1.5}
+                  />
+                </Svg>
+                <Text style={styles.pedalCaption}>ACELERADOR</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {/* MODAL DE ÉXITO AL ESTACIONAR DENTRO DE LA ZONA AZUL [P] */}
           {parkedSuccess ? (
             <View style={styles.successOverlay}>
               <View style={styles.successModalCard}>
-                <Ionicons name="checkmark-done-circle" size={44} color={PsychoPalette.mint} />
-                <Text style={styles.successModalTitle}>¡NIVEL 3D COMPLETADO CON ÉXITO!</Text>
+                <Ionicons name="checkmark-done-circle" size={46} color={PsychoPalette.mint} />
+                <Text style={styles.successModalTitle}>¡PRUEBA DE CONDUCCIÓN 3D SUPERADA!</Text>
                 <Text style={styles.successModalDesc}>
-                  {scenario.title} superado en {elapsedSec.toFixed(1)}s con {collisions}{' '}
-                  {collisions === 1 ? 'colisión' : 'colisiones'}.
+                  Estacionó el Sedán Blanco dentro de la Zona [P] en {elapsedSec.toFixed(1)}s con{' '}
+                  {collisions} {collisions === 1 ? 'cono tocado' : 'conos tocados'}.
                 </Text>
                 <View style={styles.successModalActions}>
                   <Pressable onPress={() => resetScenario(scenario)} style={styles.modalRepeatBtn}>
                     <Ionicons name="refresh" size={15} color={PsychoPalette.bgPrimary} />
-                    <Text style={styles.modalBtnText}>REPETIR NIVEL 3D</Text>
+                    <Text style={styles.modalBtnText}>REPETIR NIVEL</Text>
                   </Pressable>
                   <Pressable onPress={() => router.push('/')} style={styles.modalDashboardBtn}>
                     <Text style={styles.modalBtnText}>VER BAREMOS EN TABLERO</Text>
@@ -1709,29 +1528,12 @@ const styles = StyleSheet.create({
     gap: 6,
     flexWrap: 'wrap',
   },
-  cameraToggleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: PsychoPalette.bgPanel,
-    borderWidth: 1,
-    borderColor: PsychoPalette.cyan,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 7,
-  },
-  cameraToggleText: {
-    color: PsychoPalette.cyan,
-    fontSize: 9,
-    fontWeight: '900',
-    fontFamily: Fonts.mono,
-  },
   statBadge: {
     backgroundColor: PsychoPalette.bgPanel,
     borderRadius: 7,
     borderWidth: 1,
     borderColor: PsychoPalette.borderSubtle,
-    paddingHorizontal: 7,
+    paddingHorizontal: 8,
     paddingVertical: 3,
     alignItems: 'center',
   },
@@ -1763,351 +1565,158 @@ const styles = StyleSheet.create({
   },
   viewportContainer: {
     flex: 1,
-    backgroundColor: '#050A14',
+    backgroundColor: '#64748B',
     borderRadius: 16,
     borderWidth: 2,
     borderColor: PsychoPalette.borderSubtle,
     overflow: 'hidden',
     position: 'relative',
-    minHeight: 330,
-    justifyContent: 'space-between',
+    minHeight: 350,
   },
-  mirrorsTopOverlay: {
+  topCabinOverlay: {
     position: 'absolute',
-    top: 6,
+    top: 8,
     left: 10,
     right: 10,
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: 6,
   },
-  sideMirrorBox: {
-    width: 98,
-    backgroundColor: 'rgba(7, 13, 25, 0.92)',
-    borderWidth: 1.5,
-    borderColor: PsychoPalette.cyan,
-    borderRadius: 10,
-    padding: 4,
-    gap: 2,
-  },
-  centerMirrorBox: {
-    flex: 1,
-    maxWidth: 260,
-    backgroundColor: 'rgba(7, 13, 25, 0.94)',
-    borderWidth: 1.5,
-    borderColor: PsychoPalette.mint,
-    borderRadius: 10,
-    padding: 4,
-    gap: 2,
-  },
-  rightMirrorAndRadarRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-  },
-  mirrorHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  mirrorLabelText: {
-    color: PsychoPalette.textPrimary,
-    fontSize: 8,
-    fontWeight: '900',
-    fontFamily: Fonts.mono,
-  },
-  mirrorGlass: {
-    height: 38,
-    borderRadius: 6,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: PsychoPalette.borderSubtle,
-  },
-  centerMirrorGlass: {
-    height: 36,
-    borderRadius: 6,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: PsychoPalette.borderSubtle,
-  },
-  miniRadarBox: {
-    borderRadius: 8,
-    overflow: 'hidden',
-    borderWidth: 1.5,
-    borderColor: PsychoPalette.mint,
-    backgroundColor: '#050A14',
-  },
-  cabinCenterAlertBox: {
-    alignSelf: 'center',
+  rearMirrorPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(239, 68, 68, 0.92)',
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginTop: 64,
-  },
-  cabinCenterAlertText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '900',
-    fontFamily: Fonts.mono,
-  },
-  cabinDashboardWrapper: {
-    marginTop: 'auto',
-    backgroundColor: 'rgba(7, 13, 25, 0.94)',
-    borderTopWidth: 2,
-    borderTopColor: '#1E3150',
+    backgroundColor: 'rgba(15, 23, 42, 0.88)',
+    borderWidth: 1.5,
+    borderColor: PsychoPalette.mint,
     paddingHorizontal: 10,
-    paddingTop: 6,
-    paddingBottom: 8,
-    gap: 6,
+    paddingVertical: 5,
+    borderRadius: 8,
   },
-  carCommandsBar: {
+  rearMirrorText: {
+    color: '#FFFFFF',
+    fontSize: 9.5,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  quickCarCmds: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingBottom: 2,
+    gap: 5,
   },
-  cmdBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: PsychoPalette.bgPanel,
+  miniCmdBtn: {
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
     borderWidth: 1,
-    borderColor: PsychoPalette.borderSubtle,
+    borderColor: '#64748B',
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 7,
   },
-  cmdBtnMint: {
+  miniCmdBtnActive: {
+    backgroundColor: PsychoPalette.amberWarning,
+    borderColor: '#FFFFFF',
+  },
+  miniCmdBtnCyan: {
+    backgroundColor: '#0284C7',
+    borderColor: '#FFFFFF',
+  },
+  miniCmdBtnDanger: {
+    backgroundColor: '#DC2626',
+    borderColor: '#FFFFFF',
+  },
+  miniCmdText: {
+    color: '#FFFFFF',
+    fontSize: 9.5,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  shifterRightContainer: {
+    position: 'absolute',
+    top: 56,
+    right: 12,
+    alignItems: 'center',
+  },
+  shifterPressable: {
+    alignItems: 'center',
+  },
+  gearStateBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginTop: -4,
+  },
+  gearStateBadgeD: {
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
     borderColor: PsychoPalette.mint,
-    backgroundColor: PsychoPalette.mintDim,
   },
-  cmdBtnCyan: {
-    borderColor: PsychoPalette.cyan,
-    backgroundColor: PsychoPalette.cyanDim,
+  gearStateBadgeR: {
+    backgroundColor: 'rgba(153, 27, 27, 0.92)',
+    borderColor: '#FACC15',
   },
-  cmdBtnAmber: {
-    borderColor: PsychoPalette.amberWarning,
-    backgroundColor: PsychoPalette.amberDim,
-  },
-  cmdBtnRed: {
-    borderColor: PsychoPalette.redSignalBright,
-    backgroundColor: PsychoPalette.redSignalDim,
-  },
-  cmdBtnText: {
-    color: PsychoPalette.textPrimary,
+  gearStateBadgeText: {
+    color: '#FFFFFF',
     fontSize: 8.5,
     fontWeight: '900',
     fontFamily: Fonts.mono,
   },
-  cabinMainControlsRow: {
+  bottomControlsOverlay: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 10,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
-    gap: 8,
   },
-  joystickPanel: {
-    backgroundColor: PsychoPalette.bgPanel,
+  steeringWheelZone: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  steeringWheelTouchBox: {
+    width: 128,
+    height: 128,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wheelAnglePill: {
+    backgroundColor: 'rgba(15, 23, 42, 0.88)',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 6,
     borderWidth: 1,
-    borderColor: 'rgba(0, 217, 245, 0.45)',
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 9,
-    alignItems: 'center',
-    gap: 3,
-  },
-  controlLabel: {
-    color: PsychoPalette.textSecondary,
-    fontSize: 8,
-    fontWeight: '800',
-    fontFamily: Fonts.mono,
-  },
-  joystickBase: {
-    width: JOYSTICK_RADIUS * 2 + 12,
-    height: JOYSTICK_RADIUS * 2 + 12,
-    borderRadius: JOYSTICK_RADIUS + 6,
-    backgroundColor: '#0F1A2E',
-    borderWidth: 1.5,
     borderColor: PsychoPalette.cyan,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
   },
-  joystickCrosshairH: {
-    position: 'absolute',
-    width: '80%',
-    height: 1,
-    backgroundColor: 'rgba(0, 217, 245, 0.25)',
-  },
-  joystickCrosshairV: {
-    position: 'absolute',
-    width: 1,
-    height: '80%',
-    backgroundColor: 'rgba(0, 217, 245, 0.25)',
-  },
-  joystickKnobSmall: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: PsychoPalette.cyan,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  joystickCenterDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: PsychoPalette.bgPrimary,
-  },
-  joystickAngleReadout: {
-    color: PsychoPalette.mint,
+  wheelAnglePillText: {
+    color: PsychoPalette.cyan,
     fontSize: 9,
     fontWeight: '900',
     fontFamily: Fonts.mono,
   },
-  steeringAndClusterCenter: {
-    flex: 1,
-    backgroundColor: '#050A14',
-    borderWidth: 1,
-    borderColor: PsychoPalette.borderSubtle,
-    borderRadius: 12,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-  },
-  instrumentCluster: {
+  metallicPedalsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    width: '100%',
-    gap: 6,
-  },
-  clusterSideItem: {
-    alignItems: 'center',
-    minWidth: 55,
-  },
-  clusterLabel: {
-    color: PsychoPalette.textMuted,
-    fontSize: 8,
-    fontWeight: '800',
-    fontFamily: Fonts.mono,
-  },
-  clusterValue: {
-    fontSize: 15,
-    fontWeight: '900',
-    fontFamily: Fonts.mono,
-  },
-  steeringWheelWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  clusterIndicatorsStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'flex-end',
     gap: 10,
   },
-  clusterIconTag: {
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  clusterGearBadge: {
-    color: PsychoPalette.textSecondary,
-    fontSize: 9,
-    fontWeight: '900',
-    fontFamily: Fonts.mono,
-  },
-  pedalsCluster: {
-    flexDirection: 'row',
+  metallicBrakePressable: {
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: PsychoPalette.bgPanel,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 245, 160, 0.45)',
-    borderRadius: 12,
-    padding: 6,
+    gap: 2,
   },
-  gearSelectorColumn: {
-    gap: 4,
+  metallicGasPressable: {
     alignItems: 'center',
+    gap: 2,
   },
-  gearBtn: {
-    paddingHorizontal: 7,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: PsychoPalette.bgCard,
-    borderWidth: 1,
-    borderColor: PsychoPalette.borderSubtle,
-    minWidth: 66,
-    alignItems: 'center',
-  },
-  gearBtnActiveD: {
-    backgroundColor: PsychoPalette.mintDim,
-    borderColor: PsychoPalette.mint,
-  },
-  gearBtnActiveR: {
-    backgroundColor: PsychoPalette.amberDim,
-    borderColor: PsychoPalette.amberWarning,
-  },
-  gearBtnText: {
-    color: PsychoPalette.textSecondary,
+  pedalCaption: {
+    color: '#FFFFFF',
     fontSize: 8.5,
-    fontWeight: '800',
-    fontFamily: Fonts.mono,
-  },
-  gearBtnTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-  },
-  pedalBox: {
-    width: 52,
-    height: 76,
-    borderRadius: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 2,
-  },
-  brakePedal: {
-    backgroundColor: '#991B1B',
-    borderColor: '#EF4444',
-  },
-  brakePedalActive: {
-    backgroundColor: '#EF4444',
-    borderColor: '#FFFFFF',
-    transform: [{ scale: 0.94 }],
-  },
-  gasPedal: {
-    backgroundColor: PsychoPalette.mint,
-    borderColor: '#FFFFFF',
-  },
-  gasPedalActive: {
-    backgroundColor: PsychoPalette.cyan,
-    transform: [{ scale: 0.94 }],
-  },
-  pedalTitle: {
-    color: '#FFFFFF',
-    fontSize: 10,
     fontWeight: '900',
     fontFamily: Fonts.mono,
-  },
-  pedalSub: {
-    color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 8,
-    fontWeight: '800',
-    fontFamily: Fonts.mono,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   successOverlay: {
     ...StyleSheet.absoluteFill,

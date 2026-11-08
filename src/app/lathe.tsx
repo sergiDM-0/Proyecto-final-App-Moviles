@@ -11,58 +11,37 @@ import { Fonts, PsychoPalette } from '@/constants/theme';
 import { AptitudeGrade, useEvaluation } from '@/context/evaluation-context';
 import { usePsychAudio } from '@/hooks/use-psych-audio';
 
-type SpeedPreset = {
-  id: 'ADAPTIVE' | 'NORMAL' | 'FAST' | 'EXPERT';
-  label: string;
-  multiplier: number;
-  pxPerSec: number;
-};
-
-const SPEED_PRESETS: SpeedPreset[] = [
-  { id: 'ADAPTIVE', label: 'AUTO (POR DESEMPEÑO)', multiplier: 1.0, pxPerSec: 100 },
-  { id: 'NORMAL', label: '1.0x ESTÁNDAR', multiplier: 1.0, pxPerSec: 95 },
-  { id: 'FAST', label: '1.4x RÁPIDO', multiplier: 1.4, pxPerSec: 135 },
-  { id: 'EXPERT', label: '1.8x EXPERTO', multiplier: 1.8, pxPerSec: 175 },
-];
-
-const ADAPTIVE_GEARS = [
-  { gear: 1, label: 'M1 • 0.85x RECUPERACIÓN', multiplier: 0.85, pxPerSec: 80 },
-  { gear: 2, label: 'M2 • 1.05x ESTÁNDAR', multiplier: 1.05, pxPerSec: 100 },
-  { gear: 3, label: 'M3 • 1.35x FLUIDO', multiplier: 1.35, pxPerSec: 128 },
-  { gear: 4, label: 'M4 • 1.68x RÁPIDO', multiplier: 1.68, pxPerSec: 160 },
-  { gear: 5, label: 'M5 • 2.05x EXPERTO', multiplier: 2.05, pxPerSec: 195 },
-] as const;
-
 const EXAM_DURATION_SEC = 25;
-const LANE_HALF_WIDTH = 30;
-const CURSOR_OUTER_RADIUS = 17;
-const CURSOR_INNER_RADIUS = 5.5;
 
-/**
- * Calcula el centro X del carril izquierdo para una coordenada Y y desplazamiento scrollOffset
- */
-function getLeftLaneCenterX(y: number, scrollOffset: number, halfWidth: number): number {
+function getProportionalLaneHalfWidth(canvasWidth: number): number {
+  return Math.max(22, Math.min(32, Math.round(canvasWidth * 0.042)));
+}
+
+function getLeftLaneCenterX(
+  y: number,
+  scrollOffset: number,
+  halfWidth: number,
+  laneHalfW: number
+): number {
   const centerBase = halfWidth * 0.5;
-  const maxAmp = Math.max(18, Math.min(halfWidth * 0.28, halfWidth * 0.5 - LANE_HALF_WIDTH - 14));
+  const maxAmp = Math.max(18, Math.min(halfWidth * 0.28, halfWidth * 0.5 - laneHalfW - 14));
   const phase = (y - scrollOffset) * 0.017;
   const wave = Math.sin(phase) * 0.68 + Math.cos(phase * 1.65 + 1.1) * 0.32;
   return centerBase + wave * maxAmp;
 }
 
-/**
- * Calcula el centro X del carril derecho (asimétrico respecto al izquierdo para exigir disociación bimanual)
- */
 function getRightLaneCenterX(
   y: number,
   scrollOffset: number,
   halfWidth: number,
-  totalWidth: number
+  totalWidth: number,
+  laneHalfW: number
 ): number {
   const centerBase = halfWidth + halfWidth * 0.5;
-  const maxAmp = Math.max(18, Math.min(halfWidth * 0.28, halfWidth * 0.5 - LANE_HALF_WIDTH - 14));
+  const maxAmp = Math.max(18, Math.min(halfWidth * 0.28, halfWidth * 0.5 - laneHalfW - 14));
   const phase = (y - scrollOffset) * 0.019;
   const wave = Math.cos(phase * 1.15 + 0.6) * 0.64 - Math.sin(phase * 1.8 - 0.5) * 0.36;
-  return Math.min(totalWidth - LANE_HALF_WIDTH - 10, centerBase + wave * maxAmp);
+  return Math.min(totalWidth - laneHalfW - 10, centerBase + wave * maxAmp);
 }
 
 function buildWavePath(
@@ -90,7 +69,9 @@ export default function LatheBimanualScreen() {
   const { playSuccess, playError } = usePsychAudio();
 
   const [canvasSize, setCanvasSize] = useState({ width: 360, height: 380 });
-  const [speedPreset, setSpeedPreset] = useState<SpeedPreset>(SPEED_PRESETS[0]);
+  const [isAdaptiveMode, setIsAdaptiveMode] = useState<boolean>(true);
+  const [currentPxPerSec, setCurrentPxPerSec] = useState<number>(95);
+  const [speedMultiplier, setSpeedMultiplier] = useState<number>(1.0);
   const [isRunning, setIsRunning] = useState<boolean>(true);
   const [examFinished, setExamFinished] = useState<boolean>(false);
   const [remainingSec, setRemainingSec] = useState<number>(EXAM_DURATION_SEC);
@@ -107,22 +88,11 @@ export default function LatheBimanualScreen() {
   const [rightPrecisionPct, setRightPrecisionPct] = useState<number>(100);
   const [offTrackSeconds, setOffTrackSeconds] = useState<number>(0);
   const [finalGrade, setFinalGrade] = useState<AptitudeGrade | null>(null);
-  const [liveSpeedPx, setLiveSpeedPx] = useState<number>(100);
-  const [liveTierLabel, setLiveTierLabel] = useState<string>('M2 • 1.05x ESTÁNDAR');
-  const [performanceMeter, setPerformanceMeter] = useState<number>(45);
 
-  // Refs for 60fps loop
   const scrollRef = useRef<number>(0);
+  const speedRef = useRef<number>(95);
   const leftPosRef = useRef<{ x: number; y: number }>({ x: 90, y: 280 });
   const rightPosRef = useRef<{ x: number; y: number }>({ x: 270, y: 280 });
-
-  useEffect(() => {
-    leftPosRef.current = leftCircle;
-  }, [leftCircle]);
-
-  useEffect(() => {
-    rightPosRef.current = rightCircle;
-  }, [rightCircle]);
 
   const statsRef = useRef({
     totalFrames: 0,
@@ -132,18 +102,27 @@ export default function LatheBimanualScreen() {
     offTrackMs: 0,
     elapsedMs: 0,
     lastBuzzTime: 0,
-    perfScore: 45,
-    maxTierReached: 'M2 • 1.05x ESTÁNDAR',
+    consecutiveGoodFrames: 0,
+    consecutiveBadFrames: 0,
   });
+
+  useEffect(() => {
+    leftPosRef.current = leftCircle;
+  }, [leftCircle]);
+
+  useEffect(() => {
+    rightPosRef.current = rightCircle;
+  }, [rightCircle]);
 
   const handleCanvasLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
     if (width > 0 && height > 0) {
       setCanvasSize({ width, height });
       const half = width / 2;
+      const laneHalfW = getProportionalLaneHalfWidth(width);
       const targetY = height * 0.74;
-      const initLeftX = getLeftLaneCenterX(targetY, scrollRef.current, half);
-      const initRightX = getRightLaneCenterX(targetY, scrollRef.current, half, width);
+      const initLeftX = getLeftLaneCenterX(targetY, scrollRef.current, half, laneHalfW);
+      const initRightX = getRightLaneCenterX(targetY, scrollRef.current, half, width, laneHalfW);
       leftPosRef.current = { x: initLeftX, y: targetY };
       rightPosRef.current = { x: initRightX, y: targetY };
       setLeftCircle({ x: initLeftX, y: targetY });
@@ -153,10 +132,15 @@ export default function LatheBimanualScreen() {
 
   const resetAndStartExam = useCallback(() => {
     const half = canvasSize.width / 2;
+    const laneHalfW = getProportionalLaneHalfWidth(canvasSize.width);
     const targetY = canvasSize.height * 0.74;
     scrollRef.current = 0;
-    const initLeftX = getLeftLaneCenterX(targetY, 0, half);
-    const initRightX = getRightLaneCenterX(targetY, 0, half, canvasSize.width);
+    speedRef.current = 95;
+    setCurrentPxPerSec(95);
+    setSpeedMultiplier(1.0);
+
+    const initLeftX = getLeftLaneCenterX(targetY, 0, half, laneHalfW);
+    const initRightX = getRightLaneCenterX(targetY, 0, half, canvasSize.width, laneHalfW);
 
     leftPosRef.current = { x: initLeftX, y: targetY };
     rightPosRef.current = { x: initRightX, y: targetY };
@@ -171,8 +155,8 @@ export default function LatheBimanualScreen() {
       offTrackMs: 0,
       elapsedMs: 0,
       lastBuzzTime: 0,
-      perfScore: 45,
-      maxTierReached: 'M2 • 1.05x ESTÁNDAR',
+      consecutiveGoodFrames: 0,
+      consecutiveBadFrames: 0,
     };
 
     setPrecisionPct(100);
@@ -182,11 +166,10 @@ export default function LatheBimanualScreen() {
     setRemainingSec(EXAM_DURATION_SEC);
     setExamFinished(false);
     setFinalGrade(null);
-    setPerformanceMeter(45);
     setIsRunning(true);
   }, [canvasSize.height, canvasSize.width]);
 
-  // Main 60 FPS simulation loop
+  // Bucle a 60 FPS con velocidad adaptativa según el desempeño del usuario
   useEffect(() => {
     if (!isRunning || examFinished) return;
 
@@ -198,78 +181,75 @@ export default function LatheBimanualScreen() {
       lastTime = now;
 
       const halfWidth = canvasSize.width / 2;
-      const st = statsRef.current;
-
-      // Determine current speed dynamically based on performance if ADAPTIVE mode is active
-      let activePxPerSec = speedPreset.pxPerSec;
-      let activeTierLabel = speedPreset.label;
-
-      if (speedPreset.id === 'ADAPTIVE') {
-        const gearIdx =
-          st.perfScore >= 85
-            ? 4
-            : st.perfScore >= 66
-              ? 3
-              : st.perfScore >= 46
-                ? 2
-                : st.perfScore >= 25
-                  ? 1
-                  : 0;
-        const chosenGear = ADAPTIVE_GEARS[gearIdx];
-        activePxPerSec = chosenGear.pxPerSec;
-        activeTierLabel = chosenGear.label;
-        st.maxTierReached = chosenGear.label;
-      }
-
-      scrollRef.current += (activePxPerSec * dtMs) / 1000;
+      const laneHalfW = getProportionalLaneHalfWidth(canvasSize.width);
+      scrollRef.current += (speedRef.current * dtMs) / 1000;
       setScrollOffset(scrollRef.current);
-      setLiveSpeedPx(activePxPerSec);
-      setLiveTierLabel(activeTierLabel);
 
-      // Evaluate left & right circle distance from their respective undulating lane center
       const expectedLeftX = getLeftLaneCenterX(
         leftPosRef.current.y,
         scrollRef.current,
-        halfWidth
+        halfWidth,
+        laneHalfW
       );
       const expectedRightX = getRightLaneCenterX(
         rightPosRef.current.y,
         scrollRef.current,
         halfWidth,
-        canvasSize.width
+        canvasSize.width,
+        laneHalfW
       );
 
       const leftDist = Math.abs(leftPosRef.current.x - expectedLeftX);
       const rightDist = Math.abs(rightPosRef.current.x - expectedRightX);
 
-      const isLeftOk = leftDist <= LANE_HALF_WIDTH;
-      const isRightOk = rightDist <= LANE_HALF_WIDTH;
+      const isLeftOk = leftDist <= laneHalfW;
+      const isRightOk = rightDist <= laneHalfW;
 
       setLeftInTrack(isLeftOk);
       setRightInTrack(isRightOk);
 
+      const st = statsRef.current;
       st.totalFrames += 1;
       if (isLeftOk) st.leftGoodFrames += 1;
       if (isRightOk) st.rightGoodFrames += 1;
+
+      // LÓGICA DE VELOCIDAD ADAPTATIVA SEGÚN DESEMPEÑO
       if (isLeftOk && isRightOk) {
         st.bothGoodFrames += 1;
-        // Increase performance meter when both hands stay inside their tracks
-        st.perfScore = Math.min(100, st.perfScore + (dtMs / 1000) * 14);
+        st.consecutiveGoodFrames += 1;
+        st.consecutiveBadFrames = 0;
+
+        // Si el usuario mantiene ambos anillos perfectamente en pista por más de 45 frames (~0.75s)
+        // se incrementa la velocidad progresivamente hasta 210 px/s (2.2x)
+        if (isAdaptiveMode && st.consecutiveGoodFrames > 45) {
+          const newSpeed = Math.min(210, speedRef.current + 0.35);
+          speedRef.current = newSpeed;
+          setCurrentPxPerSec(Math.round(newSpeed));
+          setSpeedMultiplier(Number((newSpeed / 95).toFixed(2)));
+        }
       } else {
         st.offTrackMs += dtMs;
-        // Regulate speed down when off track so velocity adapts to user's performance
-        st.perfScore = Math.max(8, st.perfScore - (dtMs / 1000) * 28);
-        if (now - st.lastBuzzTime > 950) {
+        st.consecutiveBadFrames += 1;
+        st.consecutiveGoodFrames = 0;
+
+        // Si el usuario se sale o pierde precisión, la velocidad disminuye suavemente para permitir recuperar el control
+        if (isAdaptiveMode) {
+          const newSpeed = Math.max(70, speedRef.current - 0.7);
+          speedRef.current = newSpeed;
+          setCurrentPxPerSec(Math.round(newSpeed));
+          setSpeedMultiplier(Number((newSpeed / 95).toFixed(2)));
+        }
+
+        if (now - st.lastBuzzTime > 900) {
           st.lastBuzzTime = now;
           playError();
         }
       }
-      setPerformanceMeter(Math.round(st.perfScore));
 
       st.elapsedMs += dtMs;
       const leftPct = Math.round((st.leftGoodFrames / st.totalFrames) * 100);
       const rightPct = Math.round((st.rightGoodFrames / st.totalFrames) * 100);
-      const globalPct = Math.round(((leftPct + rightPct) / 2));
+      const globalPct = Math.round((leftPct + rightPct) / 2);
 
       setLeftPrecisionPct(leftPct);
       setRightPrecisionPct(rightPct);
@@ -300,8 +280,7 @@ export default function LatheBimanualScreen() {
           leftPrecisionPct: leftPct,
           rightPrecisionPct: rightPct,
           offTrackSeconds: Number((st.offTrackMs / 1000).toFixed(1)),
-          speedLevel:
-            speedPreset.id === 'ADAPTIVE' ? `ADAPTATIVO (${st.maxTierReached})` : speedPreset.label,
+          speedLevel: `Dinámica (${Math.round(speedRef.current)} px/s • ${Number((speedRef.current / 95).toFixed(1))}x)`,
           grade,
           completedAt: new Date().toLocaleTimeString(),
         });
@@ -313,27 +292,20 @@ export default function LatheBimanualScreen() {
 
     rafId = requestAnimationFrame(step);
     return () => cancelAnimationFrame(rafId);
-  }, [
-    canvasSize.width,
-    examFinished,
-    isRunning,
-    playError,
-    playSuccess,
-    setLatheResult,
-    speedPreset.id,
-    speedPreset.label,
-    speedPreset.pxPerSec,
-  ]);
+  }, [canvasSize.width, examFinished, isAdaptiveMode, isRunning, playError, playSuccess, setLatheResult]);
 
-  // Gestures for Left and Right draggable circles using react-native-gesture-handler
   const halfCanvasWidth = canvasSize.width / 2;
+  const laneHalfWidth = getProportionalLaneHalfWidth(canvasSize.width);
+  // Joysticks proporcionales al ancho de la carretera (más pequeños: ~44% del semiancho del carril)
+  const joystickOuterRadius = Math.max(11, Math.round(laneHalfWidth * 0.44));
+  const joystickInnerRadius = Math.max(4, Math.round(joystickOuterRadius * 0.36));
 
   const leftPanGesture = Gesture.Pan()
     .runOnJS(true)
     .onChange((e) => {
       setLeftCircle((prev) => ({
-        x: Math.max(22, Math.min(halfCanvasWidth - 22, prev.x + e.changeX)),
-        y: Math.max(60, Math.min(canvasSize.height - 45, prev.y + e.changeY)),
+        x: Math.max(18, Math.min(halfCanvasWidth - 18, prev.x + e.changeX)),
+        y: Math.max(50, Math.min(canvasSize.height - 40, prev.y + e.changeY)),
       }));
     });
 
@@ -341,64 +313,68 @@ export default function LatheBimanualScreen() {
     .runOnJS(true)
     .onChange((e) => {
       setRightCircle((prev) => ({
-        x: Math.max(halfCanvasWidth + 22, Math.min(canvasSize.width - 22, prev.x + e.changeX)),
-        y: Math.max(60, Math.min(canvasSize.height - 45, prev.y + e.changeY)),
+        x: Math.max(halfCanvasWidth + 18, Math.min(canvasSize.width - 18, prev.x + e.changeX)),
+        y: Math.max(50, Math.min(canvasSize.height - 40, prev.y + e.changeY)),
       }));
     });
 
-  // Build SVG wave paths for Left and Right lanes
   const leftCenterPath = buildWavePath(canvasSize.height, scrollOffset, (y, s) =>
-    getLeftLaneCenterX(y, s, halfCanvasWidth)
+    getLeftLaneCenterX(y, s, halfCanvasWidth, laneHalfWidth)
   );
   const leftBorderLPath = buildWavePath(
     canvasSize.height,
     scrollOffset,
-    (y, s) => getLeftLaneCenterX(y, s, halfCanvasWidth),
-    -LANE_HALF_WIDTH
+    (y, s) => getLeftLaneCenterX(y, s, halfCanvasWidth, laneHalfWidth),
+    -laneHalfWidth
   );
   const leftBorderRPath = buildWavePath(
     canvasSize.height,
     scrollOffset,
-    (y, s) => getLeftLaneCenterX(y, s, halfCanvasWidth),
-    LANE_HALF_WIDTH
+    (y, s) => getLeftLaneCenterX(y, s, halfCanvasWidth, laneHalfWidth),
+    laneHalfWidth
   );
 
   const rightCenterPath = buildWavePath(canvasSize.height, scrollOffset, (y, s) =>
-    getRightLaneCenterX(y, s, halfCanvasWidth, canvasSize.width)
+    getRightLaneCenterX(y, s, halfCanvasWidth, canvasSize.width, laneHalfWidth)
   );
   const rightBorderLPath = buildWavePath(
     canvasSize.height,
     scrollOffset,
-    (y, s) => getRightLaneCenterX(y, s, halfCanvasWidth, canvasSize.width),
-    -LANE_HALF_WIDTH
+    (y, s) => getRightLaneCenterX(y, s, halfCanvasWidth, canvasSize.width, laneHalfWidth),
+    -laneHalfWidth
   );
   const rightBorderRPath = buildWavePath(
     canvasSize.height,
     scrollOffset,
-    (y, s) => getRightLaneCenterX(y, s, halfCanvasWidth, canvasSize.width),
-    LANE_HALF_WIDTH
+    (y, s) => getRightLaneCenterX(y, s, halfCanvasWidth, canvasSize.width, laneHalfWidth),
+    laneHalfWidth
   );
 
-  // Target guide points at each circle's Y coordinate
-  const targetLeftX = getLeftLaneCenterX(leftCircle.y, scrollOffset, halfCanvasWidth);
+  const targetLeftX = getLeftLaneCenterX(
+    leftCircle.y,
+    scrollOffset,
+    halfCanvasWidth,
+    laneHalfWidth
+  );
   const targetRightX = getRightLaneCenterX(
     rightCircle.y,
     scrollOffset,
     halfCanvasWidth,
-    canvasSize.width
+    canvasSize.width,
+    laneHalfWidth
   );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
       <TelemetryHeader
-        title="PRUEBA DEL TORNO (COORDINACIÓN BIMANUAL)"
-        subtitle="Arrastre ambos anillos simultáneamente sin salir de los carriles ondulados"
+        title="PRUEBA DEL TORNO (VELOCIDAD ADAPTATIVA)"
+        subtitle="La velocidad se adapta en tiempo real a su precisión bimanual"
         moduleCode="MOD-02"
         showBack
       />
 
       <View style={styles.mainContainer}>
-        {/* PANEL SUPERIOR DE INDICADORES DE PRECISIÓN Y VELOCIDAD */}
+        {/* PANEL HUD SUPERIOR */}
         <View style={styles.hudPanel}>
           <View style={styles.hudMetricsRow}>
             <View style={styles.hudMetricBox}>
@@ -442,9 +418,20 @@ export default function LatheBimanualScreen() {
             </View>
 
             <View style={styles.hudMetricBox}>
-              <Text style={styles.hudMetricLabel}>VELOCIDAD DINÁMICA</Text>
-              <Text style={[styles.hudMetricValue, { color: PsychoPalette.mint }]}>
-                {liveSpeedPx} px/s
+              <Text style={styles.hudMetricLabel}>VELOCIDAD ADAPTATIVA</Text>
+              <Text
+                style={[
+                  styles.hudMetricValue,
+                  {
+                    color:
+                      speedMultiplier >= 1.5
+                        ? PsychoPalette.amberWarning
+                        : speedMultiplier >= 1.0
+                          ? PsychoPalette.mint
+                          : PsychoPalette.cyan,
+                  },
+                ]}>
+                {currentPxPerSec} px/s ({speedMultiplier}x)
               </Text>
             </View>
 
@@ -472,48 +459,21 @@ export default function LatheBimanualScreen() {
             </View>
           </View>
 
-          {/* BARRA EN VIVO DE VELOCIDAD ADAPTATIVA SEGÚN DESEMPEÑO */}
-          <View style={styles.adaptiveSpeedBarRow}>
-            <View style={styles.adaptiveTitleRow}>
-              <Ionicons name="speedometer-outline" size={14} color={PsychoPalette.mint} />
-              <Text style={styles.adaptiveSpeedLabel}>
-                VELOCIDAD POR DESEMPEÑO: <Text style={{ color: PsychoPalette.mint }}>{liveTierLabel}</Text>
-              </Text>
-            </View>
-            <View style={styles.adaptiveTrackBg}>
-              <View
-                style={[
-                  styles.adaptiveTrackFill,
-                  {
-                    width: `${performanceMeter}%`,
-                    backgroundColor:
-                      performanceMeter >= 66
-                        ? PsychoPalette.mint
-                        : performanceMeter >= 35
-                          ? PsychoPalette.cyan
-                          : PsychoPalette.amberWarning,
-                  },
-                ]}
-              />
-            </View>
-          </View>
-
           <View style={styles.hudControlsRow}>
-            <View style={styles.speedButtonsRow}>
-              {SPEED_PRESETS.map((sp) => {
-                const active = speedPreset.id === sp.id;
-                return (
-                  <Pressable
-                    key={sp.id}
-                    onPress={() => setSpeedPreset(sp)}
-                    style={[styles.speedChip, active && styles.speedChipActive]}>
-                    <Text style={[styles.speedChipText, active && styles.speedChipTextActive]}>
-                      {sp.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <Pressable
+              onPress={() => setIsAdaptiveMode((prev) => !prev)}
+              style={styles.adaptiveTag}>
+              <Ionicons
+                name="trending-up-outline"
+                size={14}
+                color={PsychoPalette.mint}
+              />
+              <Text style={styles.adaptiveTagText}>
+                {isAdaptiveMode
+                  ? 'MODO DINÁMICO ACTIVO: Si conduce bien acelera, si falla desacelera'
+                  : 'MODO FIJO (TOQUE PARA ACTIVAR DINÁMICO)'}
+              </Text>
+            </Pressable>
 
             <View style={styles.examBtnsRow}>
               <Pressable
@@ -536,7 +496,7 @@ export default function LatheBimanualScreen() {
           </View>
         </View>
 
-        {/* PISTA DE DOBLE CARRIL ONDULADO CON CONTROL MULTITÁCTIL SIMULTÁNEO */}
+        {/* PISTA DE DOBLE CARRIL ONDULADO */}
         <View style={styles.trackArena} onLayout={handleCanvasLayout}>
           <Svg width={canvasSize.width} height={canvasSize.height} style={StyleSheet.absoluteFill}>
             <Defs>
@@ -550,7 +510,6 @@ export default function LatheBimanualScreen() {
               </LinearGradient>
             </Defs>
 
-            {/* Rejilla técnica de referencia */}
             {[0.2, 0.4, 0.6, 0.8].map((ratio) => (
               <Line
                 key={ratio}
@@ -564,7 +523,6 @@ export default function LatheBimanualScreen() {
               />
             ))}
 
-            {/* Divisor central entre mano izquierda y mano derecha */}
             <Line
               x1={halfCanvasWidth}
               y1={0}
@@ -575,13 +533,11 @@ export default function LatheBimanualScreen() {
               strokeDasharray="8 6"
             />
 
-            {/* CARRIL ONDULADO IZQUIERDO (MANO IZQUIERDA - CIAN) */}
+            {/* CARRIL IZQUIERDO */}
             <Path
               d={leftCenterPath}
-              stroke={
-                leftInTrack ? 'rgba(0, 217, 245, 0.22)' : 'rgba(239, 68, 68, 0.28)'
-              }
-              strokeWidth={LANE_HALF_WIDTH * 2}
+              stroke={leftInTrack ? 'rgba(0, 217, 245, 0.22)' : 'rgba(239, 68, 68, 0.28)'}
+              strokeWidth={laneHalfWidth * 2}
               fill="none"
               strokeLinecap="round"
             />
@@ -605,13 +561,11 @@ export default function LatheBimanualScreen() {
               fill="none"
             />
 
-            {/* CARRIL ONDULADO DERECHO (MANO DERECHA - VERDE MENTA) */}
+            {/* CARRIL DERECHO */}
             <Path
               d={rightCenterPath}
-              stroke={
-                rightInTrack ? 'rgba(0, 245, 160, 0.22)' : 'rgba(239, 68, 68, 0.28)'
-              }
-              strokeWidth={LANE_HALF_WIDTH * 2}
+              stroke={rightInTrack ? 'rgba(0, 245, 160, 0.22)' : 'rgba(239, 68, 68, 0.28)'}
+              strokeWidth={laneHalfWidth * 2}
               fill="none"
               strokeLinecap="round"
             />
@@ -635,59 +589,41 @@ export default function LatheBimanualScreen() {
               fill="none"
             />
 
-            {/* Puntos ideales de referencia sobre el centro de cada carril */}
-            <Circle
-              cx={targetLeftX}
-              cy={leftCircle.y}
-              r={6}
-              fill={PsychoPalette.cyan}
-              opacity={0.75}
-            />
-            <Circle
-              cx={targetRightX}
-              cy={rightCircle.y}
-              r={6}
-              fill={PsychoPalette.mint}
-              opacity={0.75}
-            />
+            <Circle cx={targetLeftX} cy={leftCircle.y} r={3.5} fill={PsychoPalette.cyan} opacity={0.75} />
+            <Circle cx={targetRightX} cy={rightCircle.y} r={3.5} fill={PsychoPalette.mint} opacity={0.75} />
 
-            {/* CÍRCULO COMPACTO ARRASTRABLE IZQUIERDO (CONTROLADO POR EL USUARIO) */}
+            {/* JOYSTICK IZQUIERDO PROPORCIONAL A LA CARRETERA */}
             <Circle
               cx={leftCircle.x}
               cy={leftCircle.y}
-              r={CURSOR_OUTER_RADIUS}
-              fill={
-                leftInTrack ? 'rgba(0, 217, 245, 0.28)' : 'rgba(239, 68, 68, 0.42)'
-              }
+              r={joystickOuterRadius}
+              fill={leftInTrack ? 'rgba(0, 217, 245, 0.32)' : 'rgba(239, 68, 68, 0.45)'}
               stroke={leftInTrack ? PsychoPalette.cyan : PsychoPalette.redSignalBright}
-              strokeWidth={3}
+              strokeWidth={2.2}
             />
             <Circle
               cx={leftCircle.x}
               cy={leftCircle.y}
-              r={CURSOR_INNER_RADIUS}
+              r={joystickInnerRadius}
               fill={leftInTrack ? '#FFFFFF' : PsychoPalette.redSignalBright}
             />
 
-            {/* CÍRCULO COMPACTO ARRASTRABLE DERECHO (CONTROLADO POR EL USUARIO) */}
+            {/* JOYSTICK DERECHO PROPORCIONAL A LA CARRETERA */}
             <Circle
               cx={rightCircle.x}
               cy={rightCircle.y}
-              r={CURSOR_OUTER_RADIUS}
-              fill={
-                rightInTrack ? 'rgba(0, 245, 160, 0.28)' : 'rgba(239, 68, 68, 0.42)'
-              }
+              r={joystickOuterRadius}
+              fill={rightInTrack ? 'rgba(0, 245, 160, 0.32)' : 'rgba(239, 68, 68, 0.45)'}
               stroke={rightInTrack ? PsychoPalette.mint : PsychoPalette.redSignalBright}
-              strokeWidth={3}
+              strokeWidth={2.2}
             />
             <Circle
               cx={rightCircle.x}
               cy={rightCircle.y}
-              r={CURSOR_INNER_RADIUS}
+              r={joystickInnerRadius}
               fill={rightInTrack ? '#FFFFFF' : PsychoPalette.redSignalBright}
             />
 
-            {/* Indicador visual de barra de progreso inferior */}
             <Rect
               x={0}
               y={canvasSize.height - 5}
@@ -697,7 +633,6 @@ export default function LatheBimanualScreen() {
             />
           </Svg>
 
-          {/* Etiquetas de estado en cada carril */}
           <View style={styles.laneHeadersOverlay} pointerEvents="none">
             <View
               style={[
@@ -714,7 +649,7 @@ export default function LatheBimanualScreen() {
                   styles.laneStatusText,
                   { color: leftInTrack ? PsychoPalette.cyan : PsychoPalette.redSignalBright },
                 ]}>
-                MANO IZQ: {leftInTrack ? 'EN CARRIL' : '¡FUERA DE CARRIL!'}
+                IZQ: {leftInTrack ? 'EN CARRIL' : '¡FUERA!'}
               </Text>
             </View>
 
@@ -733,12 +668,11 @@ export default function LatheBimanualScreen() {
                   styles.laneStatusText,
                   { color: rightInTrack ? PsychoPalette.mint : PsychoPalette.redSignalBright },
                 ]}>
-                MANO DER: {rightInTrack ? 'EN CARRIL' : '¡FUERA DE CARRIL!'}
+                DER: {rightInTrack ? 'EN CARRIL' : '¡FUERA!'}
               </Text>
             </View>
           </View>
 
-          {/* ZONAS DE GESTOS INDEPENDIENTES (IZQUIERDA Y DERECHA) PARA MULTITOUCH SIMULTÁNEO */}
           <View style={styles.gestureSplitLayer}>
             <GestureDetector gesture={leftPanGesture}>
               <View style={styles.gestureHalfZone} />
@@ -748,11 +682,10 @@ export default function LatheBimanualScreen() {
             </GestureDetector>
           </View>
 
-          {/* MODAL DE RESULTADO AL TERMINAR EL EXAMEN DE 25s */}
-          {examFinished && finalGrade ? (
+          {examFinished && finalGrade && (
             <View style={styles.resultOverlay}>
               <View style={styles.resultCard}>
-                <Text style={styles.resultHeaderTag}>DICTAMEN COORDINACIÓN BIMANUAL</Text>
+                <Text style={styles.resultHeaderTag}>DICTAMEN TORNO ADAPTATIVO</Text>
                 <Text
                   style={[
                     styles.resultGradeTitle,
@@ -769,7 +702,7 @@ export default function LatheBimanualScreen() {
                 </Text>
                 <Text style={styles.resultBreakdown}>
                   Carril Izquierdo: {leftPrecisionPct}% • Carril Derecho: {rightPrecisionPct}% •
-                  Tiempo fuera de pista: {offTrackSeconds}s
+                  Velocidad final alcanzada: {currentPxPerSec} px/s ({speedMultiplier}x) • Tiempo fuera: {offTrackSeconds}s
                 </Text>
 
                 <View style={styles.resultActions}>
@@ -780,13 +713,13 @@ export default function LatheBimanualScreen() {
                   <Pressable
                     onPress={() => router.push('/maneuvers')}
                     style={styles.resultNextBtn}>
-                    <Text style={styles.resultNextText}>IR AL SIMULADOR 3D</Text>
+                    <Text style={styles.resultNextText}>IR A SIMULADOR 3D</Text>
                     <Ionicons name="arrow-forward" size={15} color={PsychoPalette.bgPrimary} />
                   </Pressable>
                 </View>
               </View>
             </View>
-          ) : null}
+          )}
         </View>
       </View>
     </SafeAreaView>
@@ -838,7 +771,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.mono,
   },
   hudMetricValue: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '900',
     fontFamily: Fonts.mono,
     marginTop: 2,
@@ -850,69 +783,24 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
-  adaptiveSpeedBarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    backgroundColor: PsychoPalette.bgPanel,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: PsychoPalette.borderSubtle,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  adaptiveTitleRow: {
+  adaptiveTag: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    backgroundColor: PsychoPalette.bgPanel,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 245, 160, 0.35)',
+    flex: 1,
+    minWidth: 180,
   },
-  adaptiveSpeedLabel: {
-    color: PsychoPalette.textPrimary,
+  adaptiveTagText: {
+    color: PsychoPalette.mint,
     fontSize: 10,
     fontWeight: '800',
     fontFamily: Fonts.mono,
-  },
-  adaptiveTrackBg: {
-    flex: 1,
-    maxWidth: 180,
-    height: 7,
-    backgroundColor: '#050A14',
-    borderRadius: 4,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: PsychoPalette.borderSubtle,
-  },
-  adaptiveTrackFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  speedButtonsRow: {
-    flexDirection: 'row',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  speedChip: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 6,
-    backgroundColor: PsychoPalette.bgPanel,
-    borderWidth: 1,
-    borderColor: PsychoPalette.borderSubtle,
-  },
-  speedChipActive: {
-    backgroundColor: PsychoPalette.cyanDim,
-    borderColor: PsychoPalette.cyan,
-  },
-  speedChipText: {
-    color: PsychoPalette.textSecondary,
-    fontSize: 10,
-    fontWeight: '700',
-    fontFamily: Fonts.mono,
-  },
-  speedChipTextActive: {
-    color: PsychoPalette.cyan,
-    fontWeight: '900',
   },
   examBtnsRow: {
     flexDirection: 'row',
@@ -1038,9 +926,9 @@ const styles = StyleSheet.create({
   },
   resultBreakdown: {
     color: PsychoPalette.textPrimary,
-    fontSize: 13,
+    fontSize: 12,
     textAlign: 'center',
-    lineHeight: 19,
+    lineHeight: 18,
   },
   resultActions: {
     flexDirection: 'row',

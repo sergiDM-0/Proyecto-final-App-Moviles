@@ -3,313 +3,676 @@ import { router } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, {
+  Circle,
+  Defs,
+  G,
+  Line,
+  LinearGradient,
+  Path,
+  Polygon,
+  Rect,
+  Stop,
+  Text as SvgText,
+} from 'react-native-svg';
 
 import { TelemetryHeader } from '@/components/telemetry-header';
 import { Fonts, PsychoPalette } from '@/constants/theme';
 import { AptitudeGrade, useEvaluation } from '@/context/evaluation-context';
 import { usePsychAudio } from '@/hooks/use-psych-audio';
 
-type InspectionCategory = 'ALL' | 'ENGINE' | 'TIRES' | 'LIGHTS_MIRRORS' | 'CABIN' | 'SAFETY_KIT';
+type StationId = 'ENGINE' | 'TIRES' | 'LIGHTS' | 'MIRRORS' | 'CABIN' | 'KIT';
 
-interface PreopItem {
-  id: string;
-  category: Exclude<InspectionCategory, 'ALL'>;
-  categoryLabel: string;
-  title: string;
-  detail: string;
-  specValue: string;
-  hasInitialAnomaly?: boolean;
-  anomalyDescription?: string;
-  fixActionLabel?: string;
+interface LearningStation {
+  id: StationId;
+  stepNum: number;
+  shortTitle: string;
+  systemTitle: string;
+  carZoneCoords: { cx: number; cy: number };
+  problemTitle: string;
+  problemExplanation: string;
+  problemConsequence: string;
+  problemMetric: string;
+  solutionTitle: string;
+  solutionExplanation: string;
+  solutionMetric: string;
+  actionButtonLabel: string;
 }
 
-const PREOP_ITEMS: PreopItem[] = [
-  // 1. MOTOR Y FLUIDOS
+const STATIONS: LearningStation[] = [
   {
-    id: 'engine-oil',
-    category: 'ENGINE',
-    categoryLabel: 'MOTOR Y FLUIDOS',
-    title: 'Nivel y Estado del Aceite de Motor',
-    detail: 'Medición con bayoneta en frío entre marcas MIN y FULL, sin presencia de residuos.',
-    specValue: 'SAE 5W-30 • ÓPTIMO',
+    id: 'ENGINE',
+    stepNum: 1,
+    shortTitle: '1. MOTOR Y FLUIDOS',
+    systemTitle: 'Compartimiento del Motor: Refrigerante y Aceite',
+    carZoneCoords: { cx: 88, cy: 55 },
+    problemTitle: 'PROBLEMA: Nivel de Refrigerante Bajo (Debajo de MIN) y Aceite sin medir',
+    problemExplanation:
+      'El vaso de expansión tiene líquido por debajo del mínimo (riesgo de burbujas de aire en el radiador) y el motor podría sobrecalentarse en pocos minutos.',
+    problemConsequence: 'Riesgo crítico de recalentamiento y daño de empaque de culata.',
+    problemMetric: 'NIVEL: 30% (BAJO MIN) • TEMP: 108°C ALERTA',
+    solutionTitle: 'SOLUCIÓN: Rellenado 50/50 hasta marca FULL y Aceite en rango Óptimo',
+    solutionExplanation:
+      'Con el motor en frío se completa el refrigerante entre las marcas MIN y MAX/FULL y se comprueba con la bayoneta que el aceite SAE 5W-30 esté en la zona reticulada.',
+    solutionMetric: 'NIVEL: 100% FULL • TEMP: 88°C ESTABLE',
+    actionButtonLabel: 'APLICAR SOLUCIÓN: RELLENAR REFRIGERANTE Y MEDIR ACEITE',
   },
   {
-    id: 'engine-coolant',
-    category: 'ENGINE',
-    categoryLabel: 'MOTOR Y FLUIDOS',
-    title: 'Líquido Refrigerante y Vaso de Expansión',
-    detail: 'Verificación de nivel térmico y ausencia de fugas en mangueras del radiador.',
-    specValue: 'NIVEL ÓPTIMO (50/50)',
-    hasInitialAnomaly: true,
-    anomalyDescription: 'ALERTA: Nivel de refrigerante por debajo del mínimo (Riesgo de recalentamiento)',
-    fixActionLabel: 'RELLENAR REFRIGERANTE A NIVEL FULL',
+    id: 'TIRES',
+    stepNum: 2,
+    shortTitle: '2. LLANTAS (PSI)',
+    systemTitle: 'Neumáticos: Presión de Aire (PSI) y Labrado',
+    carZoneCoords: { cx: 115, cy: 18 },
+    problemTitle: 'PROBLEMA: Llanta Delantera Baja (21 PSI) con Deformación Lateral',
+    problemExplanation:
+      'La llanta presenta flancos aplastados por baja presión (21 PSI frente a los 32 PSI recomendados). Esto hala la dirección hacia un lado y aumenta la distancia de frenado.',
+    problemConsequence: 'Mayor consumo, sobrecalentamiento del caucho y riesgo de estallido.',
+    problemMetric: 'MANÓMETRO: 21 PSI (DESINFLADA) • FLANCO DEFORMADO',
+    solutionTitle: 'SOLUCIÓN: Calibración Exacta a 32 PSI y Labrado > 2.0 mm',
+    solutionExplanation:
+      'Al inflar a 32 PSI en frío, la banda de rodadura apoya de forma plana y uniforme sobre el asfalto, garantizando agarre óptimo en curvas y frenado.',
+    solutionMetric: 'MANÓMETRO: 32 PSI ÓPTIMO • HUELLA 100% UNIFORME',
+    actionButtonLabel: 'APLICAR SOLUCIÓN: CALIBRAR AIRE DE LLANTA A 32 PSI',
   },
   {
-    id: 'engine-brake-fluid',
-    category: 'ENGINE',
-    categoryLabel: 'MOTOR Y FLUIDOS',
-    title: 'Líquido de Frenos y Batería 12V',
-    detail: 'Depósito DOT-4 al máximo y bornes de batería limpios y firmemente sujetos.',
-    specValue: 'DOT-4 • 12.6V OK',
-  },
-
-  // 2. LLANTAS Y SUSPENSIÓN
-  {
-    id: 'tires-front',
-    category: 'TIRES',
-    categoryLabel: 'LLANTAS Y FRENOS',
-    title: 'Presión de Llantas Delanteras (Izq / Der)',
-    detail: 'Calibración en frío según especificación del fabricante y verificación de válvulas.',
-    specValue: '32 PSI / 32 PSI',
-    hasInitialAnomaly: true,
-    anomalyDescription: 'FALLA DETECTADA: Llanta Delantera Izquierda baja (21 PSI - Desbalanceo)',
-    fixActionLabel: 'CALIBRAR AIRE A 32 PSI',
+    id: 'LIGHTS',
+    stepNum: 3,
+    shortTitle: '3. LUCES Y FAROLAS',
+    systemTitle: 'Sistema Óptico: Farolas Delanteras, Direccionales y Freno',
+    carZoneCoords: { cx: 52, cy: 55 },
+    problemTitle: 'PROBLEMA: Farola Derecha Apagada/Desalineada y Direccional sin Verificar',
+    problemExplanation:
+      'Un proyector delantero no ilumina la calzada y el haz izquierdo apunta demasiado bajo, reduciendo un 60% el campo visual nocturno y confundiendo a otros conductores.',
+    problemConsequence: 'Infracción vial grave y pérdida de visibilidad en carretera.',
+    problemMetric: 'FAROLA DER: FALLA • VISIBILIDAD VIAL: 40%',
+    solutionTitle: 'SOLUCIÓN: Proyectores Simétricos Activos y Circuito L/R Sincronizado',
+    solutionExplanation:
+      'Ambos faros proyectan un haz simétrico regulado en altura, con direccionales ámbar intermitentes y luces de freno rojas de encendido instantáneo.',
+    solutionMetric: '2 FAROLAS LED ACTIVAS • VISIBILIDAD: 100%',
+    actionButtonLabel: 'APLICAR SOLUCIÓN: RESTABLECER Y ALINEAR LUCES DEL CARRO',
   },
   {
-    id: 'tires-rear',
-    category: 'TIRES',
-    categoryLabel: 'LLANTAS Y FRENOS',
-    title: 'Presión de Llantas Traseras y Tuercas',
-    detail: 'Presión uniforme en eje trasero y torque completo en los 5 pernos por rueda.',
-    specValue: '32 PSI • PERNOS OK',
+    id: 'MIRRORS',
+    stepNum: 4,
+    shortTitle: '4. ESPEJOS 360°',
+    systemTitle: 'Visibilidad: Espejos Retrovisores Izquierdo, Central y Derecho',
+    carZoneCoords: { cx: 168, cy: 20 },
+    problemTitle: 'PROBLEMA: Espejos Desajustados con Gran Punto Ciego Lateral',
+    problemExplanation:
+      'Los espejos laterales están cerrados apuntando hacia la carrocería del propio carro y el espejo central apunta al techo, ocultando vehículos en los carriles vecinos.',
+    problemConsequence: 'Colisión lateral al cambiar de carril o al estacionar en reversa.',
+    problemMetric: 'ÁNGULO VISUAL: CERRADO • PUNTO CIEGO CRÍTICO',
+    solutionTitle: 'SOLUCIÓN: Graduación Panorámica de los 3 Espejos sin Puntos Ciegos',
+    solutionExplanation:
+      'Se abren los espejos laterales (viendo solo un 10% del costado del carro y 90% del carril adyacente) y se centra el retrovisor interior hacia la luneta trasera completa.',
+    solutionMetric: '3 ESPEJOS ALINEADOS • COBERTURA TRASERA 100%',
+    actionButtonLabel: 'APLICAR SOLUCIÓN: GRADUAR LOS 3 ESPEJOS RETROVISORES',
   },
   {
-    id: 'tires-tread',
-    category: 'TIRES',
-    categoryLabel: 'LLANTAS Y FRENOS',
-    title: 'Profundidad de Labrado y Llanta de Repuesto',
-    detail: 'Labrado mayor a 2.0 mm (norma > 1.6 mm) sin protuberancias ni cortes laterales.',
-    specValue: '4.2 mm • REPUESTO OK',
-  },
-
-  // 3. LUCES, ESPEJOS Y VISIBILIDAD
-  {
-    id: 'lights-headlights',
-    category: 'LIGHTS_MIRRORS',
-    categoryLabel: 'LUCES Y ESPEJOS',
-    title: 'Farolas Delanteras (Bajas, Altas y Exploradoras)',
-    detail: 'Encendido simétrico de proyectores principales para conducción diurna/nocturna.',
-    specValue: 'LED 6000K • FUNCIONAL',
-  },
-  {
-    id: 'lights-signals',
-    category: 'LIGHTS_MIRRORS',
-    categoryLabel: 'LUCES Y ESPEJOS',
-    title: 'Direccionales (Izq/Der), Estacionarias, Freno y Reversa',
-    detail: 'Intermitencia sincronizada, stops traseros al pisar pedal y luz blanca de marcha atrás.',
-    specValue: 'CIRCUITO L/R OK',
+    id: 'CABIN',
+    stepNum: 5,
+    shortTitle: '5. CABINA Y MANDOS',
+    systemTitle: 'Cabina del Conductor: Cinturón, Freno de Mano y Tablero',
+    carZoneCoords: { cx: 195, cy: 55 },
+    problemTitle: 'PROBLEMA: Cinturón Desabrochado y Freno de Mano sin Tensión',
+    problemExplanation:
+      'El conductor no ha asegurado el cinturón de 3 puntos y la palanca del freno de estacionamiento tiene recorrido excesivo sin bloquear las ruedas traseras en pendiente.',
+    problemConsequence: 'El vehículo puede rodarse solo y no hay retención ante impacto.',
+    problemMetric: 'CINTURÓN: SUELTO • FRENO MANO: DESTENSADO',
+    solutionTitle: 'SOLUCIÓN: Cinturón Anclado (Click) y Freno de Mano Calibrado (5-7 clics)',
+    solutionExplanation:
+      'El cinturón queda ajustado sobre clavícula y cadera, la silla a distancia ergonómica de los pedales y el freno de mano bloquea firmemente el eje trasero.',
+    solutionMetric: 'CINTURÓN ANCLADO OK • FRENO MANO FIRME',
+    actionButtonLabel: 'APLICAR SOLUCIÓN: ABROCHAR CINTURÓN Y CALIBRAR FRENO',
   },
   {
-    id: 'mirrors-adjustment',
-    category: 'LIGHTS_MIRRORS',
-    categoryLabel: 'LUCES Y ESPEJOS',
-    title: 'Espejos Retrovisores (Izquierdo, Central y Derecho)',
-    detail: 'Regulación ergonómica desde el puesto del conductor para eliminar puntos ciegos.',
-    specValue: '3 ESPEJOS ALINEADOS',
-    hasInitialAnomaly: true,
-    anomalyDescription: 'DESAJUSTE: Espejo retrovisor central y lateral derecho fuera de ángulo visual',
-    fixActionLabel: 'GRADUAR LOS 3 ESPEJOS RETROVISORES',
+    id: 'KIT',
+    stepNum: 6,
+    shortTitle: '6. KIT DE CARRETERA',
+    systemTitle: 'Baúl: Extintor Vigente, Triángulos Reflectivos y Herramientas',
+    carZoneCoords: { cx: 292, cy: 55 },
+    problemTitle: 'PROBLEMA: Extintor Despresurizado (Zona Roja) y Sin Triángulos Armados',
+    problemExplanation:
+      'El manómetro del extintor marca aguja en rojo (descargado), las herramientas están sueltas y no se cuenta con los 2 conos/triángulos reflectivos reglamentarios.',
+    problemConsequence: 'Imposibilidad de atender un conato de incendio o señalizar varada.',
+    problemMetric: 'EXTINTOR: 0 PSI (DESCARGADO) • KIT INCOMPLETO',
+    solutionTitle: 'SOLUCIÓN: Extintor en Zona Verde + 2 Triángulos + Botiquín y Gato',
+    solutionExplanation:
+      'Extintor ABC recargado con aguja en verde, 2 señales reflectivas listas para ubicar a 30m y 50m, tacos de bloqueo, cruceta, gato hidráulico y botiquín.',
+    solutionMetric: 'EXTINTOR EN VERDE (VIGENTE) • KIT PESV 100%',
+    actionButtonLabel: 'APLICAR SOLUCIÓN: EQUIPAR EXTINTOR RECARGADO Y KIT VIAL',
   },
-
-  // 4. CABINA Y MANDOS DE UN CARRO NORMAL
-  {
-    id: 'cabin-seatbelt',
-    category: 'CABIN',
-    categoryLabel: 'CABINA Y MANDOS',
-    title: 'Cinturón de Seguridad de 3 Puntos y Silla del Conductor',
-    detail: 'Bloqueo inercial del cinturón, distancia a los pedales y altura del apoyacabezas.',
-    specValue: 'RETRÁCTIL • ANCLADO',
-  },
-  {
-    id: 'cabin-handbrake',
-    category: 'CABIN',
-    categoryLabel: 'CABINA Y MANDOS',
-    title: 'Freno de Mano (Estacionamiento), Volante y Pedales',
-    detail: 'Recorrido firme de la palanca de freno de mano, holgura cero en dirección y retorno de pedales.',
-    specValue: 'TENSIÓN MECÁNICA OK',
-    hasInitialAnomaly: true,
-    anomalyDescription: 'VERIFICACIÓN PENDIENTE: Calibrar tensión del freno de mano y retorno de embrague/freno',
-    fixActionLabel: 'VERIFICAR Y DESTRABAR MANDOS DE CABINA',
-  },
-  {
-    id: 'cabin-wipers-horn',
-    category: 'CABIN',
-    categoryLabel: 'CABINA Y MANDOS',
-    title: 'Limpiaparabrisas, Líquido Lavaparabrisas, Claxon y Tablero',
-    detail: 'Barrido limpio de plumillas, sonido de pito reglamentario y cero testigos de falla en cluster.',
-    specValue: 'CLUSTER 0 FALLAS',
-  },
-
-  // 5. EQUIPO DE CARRETERA Y SEGURIDAD (PESV)
-  {
-    id: 'kit-extinguisher',
-    category: 'SAFETY_KIT',
-    categoryLabel: 'EQUIPO CARRETERA',
-    title: 'Extintor Multipropósito ABC (Presurizado y Vigente)',
-    detail: 'Manómetro en zona verde, pin de seguridad intacto y fecha de recarga vigente.',
-    specValue: '5 LB ABC • VIGENTE',
-    hasInitialAnomaly: true,
-    anomalyDescription: 'OBSERVACIÓN: Soporte del extintor y triángulos desasegurados en el maletero',
-    fixActionLabel: 'FIJAR EXTINTOR Y KIT DE EMERGENCIA',
-  },
-  {
-    id: 'kit-triangles-tools',
-    category: 'SAFETY_KIT',
-    categoryLabel: 'EQUIPO CARRETERA',
-    title: 'Gato Hidráulico, Cruceta, 2 Tacos y 2 Señales Reflectivas',
-    detail: 'Herramientas completas para cambio de llanta y señalización de emergencia en vía.',
-    specValue: 'KIT REGLAMENTARIO OK',
-  },
-  {
-    id: 'kit-firstaid-docs',
-    category: 'SAFETY_KIT',
-    categoryLabel: 'EQUIPO CARRETERA',
-    title: 'Botiquín de Primeros Auxilios, Linterna y Documentos (SOAT/RTM)',
-    detail: 'Antisépticos, gasas estériles, chaleco reflectivo y documentación al día.',
-    specValue: 'SOAT + RTM VIGENTES',
-  },
-];
-
-const CATEGORY_TABS: { id: InspectionCategory; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { id: 'ALL', label: 'TODOS (15)', icon: 'apps-outline' },
-  { id: 'ENGINE', label: '1. MOTOR', icon: 'flame-outline' },
-  { id: 'TIRES', label: '2. LLANTAS PSI', icon: 'disc-outline' },
-  { id: 'LIGHTS_MIRRORS', label: '3. LUCES/ESPEJOS', icon: 'flashlight-outline' },
-  { id: 'CABIN', label: '4. CABINA', icon: 'speedometer-outline' },
-  { id: 'SAFETY_KIT', label: '5. KIT VIAL', icon: 'medkit-outline' },
 ];
 
 export default function PreoperationalScreen() {
   const { setPreoperationalResult } = useEvaluation();
-  const { playLeftSignal, playRightSignal, playSuccess, playError } = usePsychAudio();
+  const { playLeftSignal, playRightSignal, playSuccess } = usePsychAudio();
 
-  const [selectedCategory, setSelectedCategory] = useState<InspectionCategory>('ALL');
-  const [checkedIds, setCheckedIds] = useState<Record<string, boolean>>({});
-  const [fixedAnomalies, setFixedAnomalies] = useState<Record<string, boolean>>({});
-  const [statusMessage, setStatusMessage] = useState<string>(
-    'Inspeccione cada sistema del vehículo, corrija las 5 anomalías detectadas y marque los 15 puntos para habilitar la conducción.'
-  );
+  const [activeIndex, setActiveIndex] = useState<number>(0);
+  const [solvedMap, setSolvedMap] = useState<Record<StationId, boolean>>({
+    ENGINE: false,
+    TIRES: false,
+    LIGHTS: false,
+    MIRRORS: false,
+    CABIN: false,
+    KIT: false,
+  });
+
+  // Permite alternar la vista gráfica encima del componente para comparar el Problema vs la Solución
+  const [viewMode, setViewMode] = useState<'PROBLEM' | 'SOLUTION'>('PROBLEM');
   const [certifiedGrade, setCertifiedGrade] = useState<AptitudeGrade | null>(null);
 
-  const totalItems = PREOP_ITEMS.length;
-  const totalInitialAnomalies = useMemo(
-    () => PREOP_ITEMS.filter((i) => i.hasInitialAnomaly).length,
-    []
+  const currentStation = STATIONS[activeIndex];
+  const isCurrentSolved = solvedMap[currentStation.id];
+  const showingSolution = viewMode === 'SOLUTION';
+
+  const solvedCount = useMemo(
+    () => STATIONS.filter((s) => solvedMap[s.id]).length,
+    [solvedMap]
   );
 
-  const checkedCount = useMemo(
-    () => PREOP_ITEMS.filter((i) => checkedIds[i.id]).length,
-    [checkedIds]
-  );
-
-  const anomaliesFixedCount = useMemo(
-    () => PREOP_ITEMS.filter((i) => i.hasInitialAnomaly && fixedAnomalies[i.id]).length,
-    [fixedAnomalies]
-  );
-
-  const remainingAnomalies = totalInitialAnomalies - anomaliesFixedCount;
-
-  const filteredItems = useMemo(() => {
-    if (selectedCategory === 'ALL') return PREOP_ITEMS;
-    return PREOP_ITEMS.filter((item) => item.category === selectedCategory);
-  }, [selectedCategory]);
-
-  // Check if a specific category is 100% done
-  const isCategoryComplete = (cat: Exclude<InspectionCategory, 'ALL'>) => {
-    const items = PREOP_ITEMS.filter((i) => i.category === cat);
-    return items.every((i) => checkedIds[i.id] && (!i.hasInitialAnomaly || fixedAnomalies[i.id]));
+  const handleSelectStation = (index: number) => {
+    const target = STATIONS[index];
+    setActiveIndex(index);
+    setViewMode(solvedMap[target.id] ? 'SOLUTION' : 'PROBLEM');
+    playLeftSignal();
   };
 
-  const handleFixAnomaly = (item: PreopItem) => {
-    playRightSignal();
-    setFixedAnomalies((prev) => ({ ...prev, [item.id]: true }));
-    setCheckedIds((prev) => ({ ...prev, [item.id]: true }));
-    setStatusMessage(`Anomalía corregida: ${item.title} (${item.specValue}). Punto verificado.`);
-  };
+  const handleApplySolution = () => {
+    const updated = { ...solvedMap, [currentStation.id]: true };
+    setSolvedMap(updated);
+    setViewMode('SOLUTION');
 
-  const handleToggleCheck = (item: PreopItem) => {
-    if (item.hasInitialAnomaly && !fixedAnomalies[item.id]) {
-      playError();
-      setStatusMessage(
-        `¡Atención! Antes de aprobar "${item.title}", presione el botón naranja para corregir la falla detectada.`
-      );
-      return;
-    }
-
-    const nextState = !checkedIds[item.id];
-    if (nextState) {
-      playLeftSignal();
-    }
-    setCheckedIds((prev) => ({ ...prev, [item.id]: nextState }));
-    setCertifiedGrade(null);
-  };
-
-  const handleCompleteAllQuick = () => {
-    const allFixed: Record<string, boolean> = {};
-    const allChecked: Record<string, boolean> = {};
-    PREOP_ITEMS.forEach((item) => {
-      if (item.hasInitialAnomaly) {
-        allFixed[item.id] = true;
-      }
-      allChecked[item.id] = true;
-    });
-    setFixedAnomalies(allFixed);
-    setCheckedIds(allChecked);
-    playSuccess();
-    setStatusMessage(
-      '¡Los 15 puntos de control y las 5 correcciones mecánicas han sido verificados! Presione "CERTIFICAR VEHÍCULO".'
-    );
-  };
-
-  const handleCertifyPreoperational = () => {
-    const scorePct = Math.round(
-      ((checkedCount / totalItems) * 0.7 + (anomaliesFixedCount / totalInitialAnomalies) * 0.3) * 100
-    );
-
-    let grade: AptitudeGrade = 'NO APTO';
-    if (checkedCount === totalItems && remainingAnomalies === 0) {
-      grade = 'EXCELENTE';
+    const totalNow = STATIONS.filter((s) => updated[s.id]).length;
+    if (totalNow === STATIONS.length) {
       playSuccess();
-      setStatusMessage(
-        '¡DICTAMEN PREOPERACIONAL EXCELENTE (100%)! El vehículo cumple todos los estándares de seguridad activa y pasiva.'
-      );
-    } else if (checkedCount >= 13 && remainingAnomalies === 0) {
-      grade = 'APTO';
-      playSuccess();
-      setStatusMessage(
-        `DICTAMEN PREOPERACIONAL APTO (${scorePct}%). Anomalías críticas corregidas; vehículo habilitado para pista.`
-      );
+      const grade: AptitudeGrade = 'EXCELENTE';
+      setCertifiedGrade(grade);
+      setPreoperationalResult({
+        checkedCount: STATIONS.length,
+        totalCount: STATIONS.length,
+        anomaliesFixed: STATIONS.length,
+        scorePct: 100,
+        grade,
+        completedAt: new Date().toLocaleTimeString(),
+      });
     } else {
-      grade = 'NO APTO';
-      playError();
-      setStatusMessage(
-        `VEHÍCULO NO APTO (${scorePct}%). Quedan ${remainingAnomalies} fallas mecánicas sin corregir o puntos críticos sin revisar.`
-      );
+      playRightSignal();
+      setPreoperationalResult({
+        checkedCount: totalNow,
+        totalCount: STATIONS.length,
+        anomaliesFixed: totalNow,
+        scorePct: Math.round((totalNow / STATIONS.length) * 100),
+        grade: totalNow >= 5 ? 'APTO' : 'PENDIENTE',
+        completedAt: new Date().toLocaleTimeString(),
+      });
     }
-
-    setCertifiedGrade(grade);
-    setPreoperationalResult({
-      checkedCount,
-      totalCount: totalItems,
-      anomaliesFixed: anomaliesFixedCount,
-      scorePct,
-      grade,
-      completedAt: new Date().toLocaleTimeString(),
-    });
   };
 
-  const engineOk = isCategoryComplete('ENGINE');
-  const tiresOk = isCategoryComplete('TIRES');
-  const lightsOk = isCategoryComplete('LIGHTS_MIRRORS');
-  const cabinOk = isCategoryComplete('CABIN');
-  const kitOk = isCategoryComplete('SAFETY_KIT');
+  /**
+   * Renderiza la ilustración técnica interactiva ENCIMA del componente seleccionado,
+   * cambiando dinámicamente entre la vista del PROBLEMA y cómo queda la SOLUCIÓN.
+   */
+  const renderInteractiveComponentScene = () => {
+    switch (currentStation.id) {
+      case 'ENGINE':
+        return (
+          <Svg width="100%" height={205} viewBox="0 0 540 205">
+            <Rect x={4} y={4} width={532} height={197} rx={14} fill="#070E1B" stroke="#1E3150" strokeWidth={1.5} />
+            {/* Bloque del motor */}
+            <Rect x={35} y={42} width={190} height={130} rx={12} fill="#1E293B" stroke="#64748B" strokeWidth={2.5} />
+            <Rect x={52} y={28} width={156} height={20} rx={6} fill="#334155" stroke="#94A3B8" strokeWidth={1.5} />
+            <SvgText x={130} y={42} fill="#F8FAFC" fontSize="11" fontWeight="bold" textAnchor="middle">
+              BLOQUE MOTOR DOHC 16V
+            </SvgText>
+
+            {/* Tapa de aceite y bayoneta */}
+            <Circle
+              cx={95}
+              cy={88}
+              r={20}
+              fill="#0F172A"
+              stroke={showingSolution ? PsychoPalette.mint : PsychoPalette.amberWarning}
+              strokeWidth={2.5}
+            />
+            <SvgText x={95} y={92} fill="#FFFFFF" fontSize="9" fontWeight="bold" textAnchor="middle">
+              OIL 5W30
+            </SvgText>
+
+            {/* Medidor de bayoneta de aceite */}
+            <Rect x={140} y={66} width={66} height={86} rx={8} fill="#0F172A" stroke="#475569" strokeWidth={1.5} />
+            <SvgText x={173} y={82} fill="#94A3B8" fontSize="9" fontWeight="bold" textAnchor="middle">
+              BAYONETA
+            </SvgText>
+            <Line x1={155} y1={98} x2={191} y2={98} stroke={PsychoPalette.mint} strokeWidth={1.5} />
+            <SvgText x={173} y={95} fill={PsychoPalette.mint} fontSize="8" textAnchor="middle">
+              FULL
+            </SvgText>
+            <Rect
+              x={160}
+              y={showingSolution ? 100 : 132}
+              width={26}
+              height={showingSolution ? 40 : 8}
+              rx={3}
+              fill={showingSolution ? PsychoPalette.amberWarning : PsychoPalette.redSignalBright}
+            />
+            <Line x1={155} y1={140} x2={191} y2={140} stroke={PsychoPalette.redSignalBright} strokeWidth={1.5} />
+
+            {/* Mangueras hacia el vaso de expansión del refrigerante */}
+            <Path
+              d="M 225 78 C 265 78, 270 68, 305 68"
+              stroke={showingSolution ? PsychoPalette.cyan : PsychoPalette.redSignalBright}
+              strokeWidth={7}
+              fill="none"
+            />
+            <Path
+              d="M 225 138 C 265 138, 270 148, 305 148"
+              stroke="#475569"
+              strokeWidth={7}
+              fill="none"
+            />
+
+            {/* Vaso de expansión transparente del Líquido Refrigerante */}
+            <Rect
+              x={305}
+              y={36}
+              width={195}
+              height={140}
+              rx={16}
+              fill="#0B1528"
+              stroke={showingSolution ? PsychoPalette.mint : PsychoPalette.redSignalBright}
+              strokeWidth={3}
+            />
+            <Rect x={372} y={20} width={60} height={18} rx={5} fill="#1E293B" stroke={PsychoPalette.cyan} strokeWidth={2} />
+            <SvgText x={402} y={32} fill="#FFFFFF" fontSize="9" fontWeight="bold" textAnchor="middle">
+              COOLANT CAP
+            </SvgText>
+
+            {/* Líquido dentro del depósito: Bajo en PROBLEMA vs Lleno en SOLUCIÓN */}
+            <Rect
+              x={311}
+              y={showingSolution ? 68 : 142}
+              width={183}
+              height={showingSolution ? 102 : 28}
+              rx={10}
+              fill={showingSolution ? 'rgba(0, 245, 160, 0.42)' : 'rgba(239, 68, 68, 0.55)'}
+            />
+
+            {/* Líneas de referencia FULL y MIN */}
+            <Line x1={315} y1={70} x2={490} y2={70} stroke={PsychoPalette.mint} strokeWidth={2} strokeDasharray="6 4" />
+            <SvgText x={402} y={64} fill={PsychoPalette.mint} fontSize="11" fontWeight="bold" textAnchor="middle">
+              ▲ NIVEL MÁXIMO / FULL (ÓPTIMO)
+            </SvgText>
+
+            <Line x1={315} y1={134} x2={490} y2={134} stroke={PsychoPalette.redSignalBright} strokeWidth={2} strokeDasharray="6 4" />
+            <SvgText x={402} y={128} fill={PsychoPalette.redSignalBright} fontSize="10" fontWeight="bold" textAnchor="middle">
+              ▼ NIVEL MÍNIMO (PELIGRO)
+            </SvgText>
+
+            {!showingSolution ? (
+              <G>
+                <SvgText x={402} y={102} fill="#FF3B5C" fontSize="13" fontWeight="bold" textAnchor="middle">
+                  ¡REFRIGERANTE BAJO! (108°C)
+                </SvgText>
+              </G>
+            ) : (
+              <G>
+                <SvgText x={402} y={105} fill="#FFFFFF" fontSize="13" fontWeight="bold" textAnchor="middle">
+                  ✓ NIVEL FULL CALIBRADO (88°C)
+                </SvgText>
+              </G>
+            )}
+          </Svg>
+        );
+
+      case 'TIRES':
+        return (
+          <Svg width="100%" height={205} viewBox="0 0 540 205">
+            <Rect x={4} y={4} width={532} height={197} rx={14} fill="#070E1B" stroke="#1E3150" strokeWidth={1.5} />
+            {/* Superficie de la carretera bajo la llanta */}
+            <Line x1={25} y1={174} x2={515} y2={174} stroke="#475569" strokeWidth={4} />
+
+            {/* Rueda / Neumático (Deformado abajo cuando está en 21 PSI vs Redondo firme en 32 PSI) */}
+            {!showingSolution ? (
+              <G>
+                {/* Neumático desinflado con panza inferior */}
+                <Path
+                  d="M 95 45 C 50 45, 38 115, 52 155 C 58 172, 75 174, 145 174 C 215 174, 232 172, 238 155 C 252 115, 240 45, 195 45 Z"
+                  fill="#0F172A"
+                  stroke={PsychoPalette.redSignalBright}
+                  strokeWidth={3.5}
+                />
+                <SvgText x={145} y={192} fill={PsychoPalette.redSignalBright} fontSize="11" fontWeight="bold" textAnchor="middle">
+                  ¡DEFORMACIÓN POR BAJA PRESIÓN (21 PSI)!
+                </SvgText>
+              </G>
+            ) : (
+              <G>
+                {/* Neumático correctamente inflado a 32 PSI */}
+                <Circle
+                  cx={145}
+                  cy={108}
+                  r={65}
+                  fill="#0F172A"
+                  stroke={PsychoPalette.mint}
+                  strokeWidth={3.5}
+                />
+                <SvgText x={145} y={192} fill={PsychoPalette.mint} fontSize="11" fontWeight="bold" textAnchor="middle">
+                  ✓ APOYO UNIFORME Y FIRME A 32 PSI
+                </SvgText>
+              </G>
+            )}
+
+            {/* Rin de aluminio */}
+            <Circle cx={145} cy={112} r={36} fill="#1E293B" stroke="#94A3B8" strokeWidth={3} />
+            <Circle cx={145} cy={112} r={10} fill="#0F172A" stroke={PsychoPalette.cyan} strokeWidth={2} />
+
+            {/* Manguera del calibrador de aire conectada a la válvula */}
+            <Path
+              d="M 181 112 L 290 112"
+              stroke={showingSolution ? PsychoPalette.mint : PsychoPalette.amberWarning}
+              strokeWidth={4}
+              strokeDasharray="6 4"
+            />
+
+            {/* Manómetro Digital de Presión PSI */}
+            <Rect
+              x={290}
+              y={34}
+              width={215}
+              height={140}
+              rx={16}
+              fill="#0B1528"
+              stroke={showingSolution ? PsychoPalette.mint : PsychoPalette.redSignalBright}
+              strokeWidth={3}
+            />
+            <SvgText x={397} y={58} fill="#94A3B8" fontSize="10" fontWeight="bold" textAnchor="middle">
+              MANÓMETRO DIGITAL DE LLANTAS
+            </SvgText>
+            <SvgText
+              x={397}
+              y={104}
+              fill={showingSolution ? PsychoPalette.mint : PsychoPalette.redSignalBright}
+              fontSize="34"
+              fontWeight="bold"
+              textAnchor="middle">
+              {showingSolution ? '32 PSI' : '21 PSI'}
+            </SvgText>
+            <SvgText
+              x={397}
+              y={128}
+              fill="#F8FAFC"
+              fontSize="11"
+              fontWeight="bold"
+              textAnchor="middle">
+              {showingSolution
+                ? '✓ PRESIÓN REGLAMENTARIA OK'
+                : '⚠ BAJA PRESIÓN (-11 PSI)'}
+            </SvgText>
+            <SvgText x={397} y={154} fill={PsychoPalette.cyan} fontSize="10" fontWeight="bold" textAnchor="middle">
+              LABRADO VERIFICADO: 4.2 mm (NORMA &gt; 1.6 mm)
+            </SvgText>
+          </Svg>
+        );
+
+      case 'LIGHTS':
+        return (
+          <Svg width="100%" height={205} viewBox="0 0 540 205">
+            <Rect x={4} y={4} width={532} height={197} rx={14} fill="#070E1B" stroke="#1E3150" strokeWidth={1.5} />
+
+            {/* Vista frontal del carro y proyección de haces de luz */}
+            <Rect x={40} y={55} width={160} height={96} rx={18} fill="#1E3A8A" stroke="#60A5FA" strokeWidth={2.5} />
+            <Rect x={60} y={65} width={120} height={36} rx={8} fill="#0F172A" stroke="#93C5FD" strokeWidth={1.5} />
+            <SvgText x={120} y={88} fill="#FFFFFF" fontSize="10" fontWeight="bold" textAnchor="middle">
+              FRENTE DEL VEHÍCULO
+            </SvgText>
+
+            {/* Faro Izquierdo */}
+            <Circle cx={66} cy={122} r={12} fill="#FEF08A" stroke="#FFFFFF" strokeWidth={2} />
+            {/* Faro Derecho (Apagado en PROBLEMA vs Encendido en SOLUCIÓN) */}
+            <Circle
+              cx={174}
+              cy={122}
+              r={12}
+              fill={showingSolution ? '#FEF08A' : '#334155'}
+              stroke={showingSolution ? '#FFFFFF' : PsychoPalette.redSignalBright}
+              strokeWidth={2}
+            />
+
+            {/* Proyección de los haces de luz sobre la vía */}
+            {!showingSolution ? (
+              <G>
+                {/* Solo un haz corto y desalineado */}
+                <Polygon points="200,115 335,145 335,175 200,135" fill="rgba(254, 240, 138, 0.22)" />
+                <SvgText x={370} y={82} fill={PsychoPalette.redSignalBright} fontSize="13" fontWeight="bold" textAnchor="middle">
+                  ✗ FAROLA DERECHA APAGADA
+                </SvgText>
+                <SvgText x={370} y={104} fill="#F8FAFC" fontSize="11" textAnchor="middle">
+                  60% de la carretera queda a oscuras
+                </SvgText>
+              </G>
+            ) : (
+              <G>
+                {/* Doble haz simétrico de largo alcance + direccionales */}
+                <Polygon points="200,72 515,32 515,108 200,110" fill="rgba(0, 245, 160, 0.26)" />
+                <Polygon points="200,116 515,102 515,178 200,152" fill="rgba(0, 217, 245, 0.26)" />
+                <SvgText x={375} y={96} fill={PsychoPalette.mint} fontSize="13" fontWeight="bold" textAnchor="middle">
+                  ✓ DOBLE HAZ SIMÉTRICO + DIRECCIONALES OK
+                </SvgText>
+                <SvgText x={375} y={118} fill="#FFFFFF" fontSize="11" fontWeight="bold" textAnchor="middle">
+                  Bajas, Altas, Direccionales L/R y Freno 100%
+                </SvgText>
+              </G>
+            )}
+          </Svg>
+        );
+
+      case 'MIRRORS':
+        return (
+          <Svg width="100%" height={205} viewBox="0 0 540 205">
+            <Rect x={4} y={4} width={532} height={197} rx={14} fill="#070E1B" stroke="#1E3150" strokeWidth={1.5} />
+
+            {/* Vehículo central visto desde arriba con conos de visión de los 3 espejos */}
+            <Rect x={225} y={62} width={90} height={115} rx={16} fill="#1D4ED8" stroke="#93C5FD" strokeWidth={2.5} />
+            <SvgText x={270} y={122} fill="#FFFFFF" fontSize="10" fontWeight="bold" textAnchor="middle">
+              TU CARRO
+            </SvgText>
+
+            {!showingSolution ? (
+              <G>
+                {/* Conos rojos estrechos apuntando al propio carro y zonas ciegas peligrosas */}
+                <Polygon points="225,82 185,175 225,175" fill="rgba(239, 68, 68, 0.35)" />
+                <Polygon points="315,82 315,175 355,175" fill="rgba(239, 68, 68, 0.35)" />
+                <Rect x={60} y={85} width={115} height={78} rx={10} fill="rgba(239, 68, 68, 0.22)" stroke={PsychoPalette.redSignalBright} strokeWidth={2} strokeDasharray="5 4" />
+                <SvgText x={117} y={122} fill={PsychoPalette.redSignalBright} fontSize="11" fontWeight="bold" textAnchor="middle">
+                  ¡PUNTO CIEGO IZQ!
+                </SvgText>
+                <Rect x={365} y={85} width={115} height={78} rx={10} fill="rgba(239, 68, 68, 0.22)" stroke={PsychoPalette.redSignalBright} strokeWidth={2} strokeDasharray="5 4" />
+                <SvgText x={422} y={122} fill={PsychoPalette.redSignalBright} fontSize="11" fontWeight="bold" textAnchor="middle">
+                  ¡PUNTO CIEGO DER!
+                </SvgText>
+                <SvgText x={270} y={34} fill={PsychoPalette.redSignalBright} fontSize="12" fontWeight="bold" textAnchor="middle">
+                  ✗ ESPEJOS CERRADOS: NO SE VEN LOS CARRILES VECINOS
+                </SvgText>
+              </G>
+            ) : (
+              <G>
+                {/* Conos verdes amplios cubriendo los 3 ángulos traseros */}
+                <Polygon points="225,82 45,190 215,190" fill="rgba(0, 245, 160, 0.28)" stroke={PsychoPalette.mint} strokeWidth={1.5} />
+                <Polygon points="270,75 205,195 335,195" fill="rgba(0, 217, 245, 0.24)" stroke={PsychoPalette.cyan} strokeWidth={1.5} />
+                <Polygon points="315,82 325,190 495,190" fill="rgba(0, 245, 160, 0.28)" stroke={PsychoPalette.mint} strokeWidth={1.5} />
+                <SvgText x={125} y={155} fill={PsychoPalette.mint} fontSize="11" fontWeight="bold" textAnchor="middle">
+                  ✓ ESPEJO IZQ OK
+                </SvgText>
+                <SvgText x={270} y={188} fill={PsychoPalette.cyan} fontSize="11" fontWeight="bold" textAnchor="middle">
+                  ✓ CENTRAL PANORÁMICO
+                </SvgText>
+                <SvgText x={415} y={155} fill={PsychoPalette.mint} fontSize="11" fontWeight="bold" textAnchor="middle">
+                  ✓ ESPEJO DER OK
+                </SvgText>
+                <SvgText x={270} y={34} fill={PsychoPalette.mint} fontSize="12" fontWeight="bold" textAnchor="middle">
+                  ✓ VISIÓN 360° COMPLETA SIN PUNTOS CIEGOS
+                </SvgText>
+              </G>
+            )}
+          </Svg>
+        );
+
+      case 'CABIN':
+        return (
+          <Svg width="100%" height={205} viewBox="0 0 540 205">
+            <Rect x={4} y={4} width={532} height={197} rx={14} fill="#070E1B" stroke="#1E3150" strokeWidth={1.5} />
+
+            {/* Silla del conductor y Cinturón de Seguridad de 3 Puntos */}
+            <Rect x={55} y={32} width={150} height={145} rx={14} fill="#0F172A" stroke="#475569" strokeWidth={2} />
+            <SvgText x={130} y={54} fill="#94A3B8" fontSize="10" fontWeight="bold" textAnchor="middle">
+              CINTURÓN DE 3 PUNTOS
+            </SvgText>
+            {!showingSolution ? (
+              <G>
+                <Line x1={75} y1={65} x2={92} y2={155} stroke={PsychoPalette.redSignalBright} strokeWidth={7} />
+                <SvgText x={130} y={115} fill={PsychoPalette.redSignalBright} fontSize="12" fontWeight="bold" textAnchor="middle">
+                  ✗ DESABROCHADO
+                </SvgText>
+              </G>
+            ) : (
+              <G>
+                {/* Banda diagonal y pélvica abrochada */}
+                <Line x1={75} y1={65} x2={180} y2={152} stroke={PsychoPalette.mint} strokeWidth={8} />
+                <Line x1={75} y1={152} x2={180} y2={152} stroke={PsychoPalette.mint} strokeWidth={8} />
+                <Circle cx={180} cy={152} r={9} fill={PsychoPalette.redSignalBright} stroke="#FFFFFF" strokeWidth={2} />
+                <SvgText x={130} y={98} fill={PsychoPalette.mint} fontSize="12" fontWeight="bold" textAnchor="middle">
+                  ✓ ANCLADO (CLICK)
+                </SvgText>
+              </G>
+            )}
+
+            {/* Palanca de Freno de Mano y Cluster */}
+            <Rect x={245} y={32} width={250} height={145} rx={14} fill="#0F172A" stroke="#475569" strokeWidth={2} />
+            <SvgText x={370} y={54} fill="#94A3B8" fontSize="10" fontWeight="bold" textAnchor="middle">
+              FRENO DE MANO Y MANDOS DE CABINA
+            </SvgText>
+            <Line
+              x1={310}
+              y1={145}
+              x2={showingSolution ? 395 : 425}
+              y2={showingSolution ? 82 : 140}
+              stroke={showingSolution ? PsychoPalette.mint : PsychoPalette.amberWarning}
+              strokeWidth={10}
+              strokeLinecap="round"
+            />
+            <Circle cx={310} cy={145} r={12} fill="#334155" stroke="#FFFFFF" strokeWidth={2} />
+            <SvgText
+              x={370}
+              y={166}
+              fill={showingSolution ? PsychoPalette.mint : PsychoPalette.amberWarning}
+              fontSize="11"
+              fontWeight="bold"
+              textAnchor="middle">
+              {showingSolution
+                ? '✓ TENSIÓN CALIBRADA (6 CLICS) + PITO Y LIMPIABRISAS OK'
+                : '⚠ PALANCA SIN TENSIÓN MECÁNica'}
+            </SvgText>
+          </Svg>
+        );
+
+      case 'KIT':
+        return (
+          <Svg width="100%" height={205} viewBox="0 0 540 205">
+            <Rect x={4} y={4} width={532} height={197} rx={14} fill="#070E1B" stroke="#1E3150" strokeWidth={1.5} />
+
+            {/* Cilindro del Extintor y Manómetro */}
+            <Rect
+              x={55}
+              y={52}
+              width={78}
+              height={125}
+              rx={16}
+              fill="#DC2626"
+              stroke="#FCA5A5"
+              strokeWidth={2}
+            />
+            <Rect x={78} y={30} width={32} height={24} rx={5} fill="#334155" />
+            {/* Manómetro del extintor */}
+            <Circle
+              cx={94}
+              cy={85}
+              r={20}
+              fill="#0F172A"
+              stroke={showingSolution ? PsychoPalette.mint : PsychoPalette.redSignalBright}
+              strokeWidth={3}
+            />
+            <SvgText
+              x={94}
+              y={89}
+              fill={showingSolution ? PsychoPalette.mint : PsychoPalette.redSignalBright}
+              fontSize="9"
+              fontWeight="bold"
+              textAnchor="middle">
+              {showingSolution ? 'VERDE OK' : '0 PSI !'}
+            </SvgText>
+            <SvgText x={94} y={142} fill="#FFFFFF" fontSize="10" fontWeight="bold" textAnchor="middle">
+              EXTINTOR
+            </SvgText>
+            <SvgText x={94} y={156} fill="#FFFFFF" fontSize="9" textAnchor="middle">
+              ABC 5 LB
+            </SvgText>
+
+            {/* 2 Triángulos Reflectivos y Botiquín */}
+            <Polygon
+              points="235,52 185,148 285,148"
+              fill="none"
+              stroke={showingSolution ? '#F97316' : '#475569'}
+              strokeWidth={9}
+              strokeLinejoin="round"
+            />
+            <Polygon
+              points="345,52 295,148 395,148"
+              fill="none"
+              stroke={showingSolution ? '#F97316' : '#475569'}
+              strokeWidth={9}
+              strokeLinejoin="round"
+            />
+
+            {/* Botiquín y Gato */}
+            <Rect
+              x={415}
+              y={68}
+              width={92}
+              height={80}
+              rx={12}
+              fill="#0F172A"
+              stroke={showingSolution ? PsychoPalette.mint : '#475569'}
+              strokeWidth={2.5}
+            />
+            <SvgText x={461} y={102} fill={PsychoPalette.mint} fontSize="18" fontWeight="bold" textAnchor="middle">
+              +
+            </SvgText>
+            <SvgText x={461} y={122} fill="#FFFFFF" fontSize="9" fontWeight="bold" textAnchor="middle">
+              BOTIQUÍN + GATO
+            </SvgText>
+
+            <SvgText
+              x={335}
+              y={182}
+              fill={showingSolution ? PsychoPalette.mint : PsychoPalette.redSignalBright}
+              fontSize="11"
+              fontWeight="bold"
+              textAnchor="middle">
+              {showingSolution
+                ? '✓ EXTINTOR PRESURIZADO + 2 TRIÁNGULOS + BOTIQUÍN Y HERRAMIENTA'
+                : '✗ EXTINTOR DESCARGADO Y SEÑALES REFLECTIVAS FALTANTES'}
+            </SvgText>
+          </Svg>
+        );
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
       <TelemetryHeader
-        title="NIVEL PREOPERACIONAL DEL VEHÍCULO"
-        subtitle="Inspección Mecánica 360°, Fluidos, PSI de Llantas, Cabina y Kit Vial"
+        title="LABORATORIO VISUAL PREOPERACIONAL"
+        subtitle="Toque cada sistema del vehículo para ver el Problema y aplicar la Solución en vivo"
         moduleCode="MOD-00"
         showBack
         onTestAudio={playRightSignal}
@@ -319,475 +682,311 @@ export default function PreoperationalScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
-        {/* PANEL SUPERIOR DE MÉTRICAS Y ESQUEMA INTERACTIVO DEL CARRO */}
-        <View style={styles.topOverviewCard}>
-          <View style={styles.metricsRow}>
-            <View style={styles.metricCell}>
-              <Text style={styles.metricLabel}>PUNTOS REVISADOS</Text>
-              <Text style={[styles.metricValue, { color: PsychoPalette.cyan }]}>
-                {checkedCount}/{totalItems}
-              </Text>
-            </View>
-
-            <View style={styles.metricCell}>
-              <Text style={styles.metricLabel}>FALLAS CORREGIDAS</Text>
-              <Text
-                style={[
-                  styles.metricValue,
-                  {
-                    color:
-                      remainingAnomalies === 0 ? PsychoPalette.mint : PsychoPalette.amberWarning,
-                  },
-                ]}>
-                {anomaliesFixedCount}/{totalInitialAnomalies}
-              </Text>
-            </View>
-
-            <View style={styles.metricCell}>
-              <Text style={styles.metricLabel}>PRESIÓN LLANTAS</Text>
-              <Text
-                style={[
-                  styles.metricValue,
-                  { color: fixedAnomalies['tires-front'] ? PsychoPalette.mint : PsychoPalette.redSignalBright },
-                ]}>
-                {fixedAnomalies['tires-front'] ? '32 PSI OK' : '21 PSI BAJA'}
-              </Text>
-            </View>
-
-            <View style={styles.metricCell}>
-              <Text style={styles.metricLabel}>ESTADO VEHÍCULO</Text>
-              <Text
-                style={[
-                  styles.metricValue,
-                  {
-                    color:
-                      checkedCount === totalItems && remainingAnomalies === 0
-                        ? PsychoPalette.mint
-                        : PsychoPalette.amberWarning,
-                  },
-                ]}>
-                {checkedCount === totalItems && remainingAnomalies === 0 ? 'LISTO' : 'EN REVISIÓN'}
+        {/* 1. MAPA INTERACTIVO DEL CARRO Y SELECTOR DE LAS 6 PIEZAS */}
+        <View style={styles.carMapSelectorCard}>
+          <View style={styles.carMapTopHeader}>
+            <Text style={styles.carMapTitle}>
+              SELECCIONE EL COMPONENTE DEL VEHÍCULO ({solvedCount}/{STATIONS.length} SOLUCIONADOS)
+            </Text>
+            <View style={styles.progressBadge}>
+              <Text style={styles.progressBadgeText}>
+                PROGRESO: {Math.round((solvedCount / STATIONS.length) * 100)}%
               </Text>
             </View>
           </View>
 
-          {/* DIAGRAMA TÉCNICO INTERACTIVO DEL VEHÍCULO (TOQUE ZONAS PARA FILTRAR) */}
-          <View style={styles.carBlueprintBox}>
-            <View style={styles.blueprintHeader}>
-              <Text style={styles.blueprintTitle}>
-                ESQUEMA TÉCNICO 360° • TOQUE UNA ZONA DEL CARRO PARA INSPECCIONAR
-              </Text>
-              <Pressable onPress={handleCompleteAllQuick} style={styles.quickVerifyBtn}>
-                <Ionicons name="checkmark-done-outline" size={14} color={PsychoPalette.mint} />
-                <Text style={styles.quickVerifyBtnText}>INSPECCIONAR Y CALIBRAR TODO</Text>
-              </Pressable>
-            </View>
+          {/* Mini Silueta del Vehículo con el punto activo resaltado encima */}
+          <View style={styles.miniCarSvgBox}>
+            <Svg width="100%" height={96} viewBox="0 0 360 96">
+              <Defs>
+                <LinearGradient id="carBodyGrad" x1="0" y1="0" x2="1" y2="0">
+                  <Stop offset="0" stopColor="#1E3A8A" />
+                  <Stop offset="1" stopColor="#172554" />
+                </LinearGradient>
+              </Defs>
+              <Rect x={48} y={20} width={264} height={56} rx={16} fill="url(#carBodyGrad)" stroke="#60A5FA" strokeWidth={2} />
+              <Rect x={140} y={25} width={105} height={46} rx={10} fill="#0F172A" stroke="#93C5FD" strokeWidth={1.5} />
 
-            <View style={styles.svgDiagramWrapper}>
-              <Svg width="100%" height={150} viewBox="0 0 520 150">
-                {/* Fondo cuadriculado de taller */}
-                <Rect x={4} y={4} width={512} height={142} rx={12} fill="#070E1B" stroke="#1E3150" strokeWidth={1.5} />
-                <Line x1={130} y1={4} x2={130} y2={146} stroke="rgba(30,49,80,0.4)" strokeDasharray="4 4" />
-                <Line x1={260} y1={4} x2={260} y2={146} stroke="rgba(30,49,80,0.4)" strokeDasharray="4 4" />
-                <Line x1={390} y1={4} x2={390} y2={146} stroke="rgba(30,49,80,0.4)" strokeDasharray="4 4" />
-
-                {/* Haces de luces delanteras */}
-                <Path
-                  d="M 135 45 L 40 22 L 40 62 Z"
-                  fill={lightsOk ? 'rgba(0, 245, 160, 0.22)' : 'rgba(0, 217, 245, 0.14)'}
-                />
-                <Path
-                  d="M 135 105 L 40 88 L 40 128 Z"
-                  fill={lightsOk ? 'rgba(0, 245, 160, 0.22)' : 'rgba(0, 217, 245, 0.14)'}
-                />
-
-                {/* 4 LLANTAS DEL VEHÍCULO */}
-                <Rect
-                  x={162}
-                  y={20}
-                  width={42}
-                  height={12}
-                  rx={4}
-                  fill="#0F172A"
-                  stroke={tiresOk ? PsychoPalette.mint : PsychoPalette.amberWarning}
-                  strokeWidth={2}
-                />
-                <Rect
-                  x={162}
-                  y={118}
-                  width={42}
-                  height={12}
-                  rx={4}
-                  fill="#0F172A"
-                  stroke={tiresOk ? PsychoPalette.mint : PsychoPalette.amberWarning}
-                  strokeWidth={2}
-                />
-                <Rect
-                  x={322}
-                  y={20}
-                  width={42}
-                  height={12}
-                  rx={4}
-                  fill="#0F172A"
-                  stroke={tiresOk ? PsychoPalette.mint : PsychoPalette.cyan}
-                  strokeWidth={2}
-                />
-                <Rect
-                  x={322}
-                  y={118}
-                  width={42}
-                  height={12}
-                  rx={4}
-                  fill="#0F172A"
-                  stroke={tiresOk ? PsychoPalette.mint : PsychoPalette.cyan}
-                  strokeWidth={2}
-                />
-
-                {/* CARROCERÍA PRINCIPAL DEL CARRO */}
-                <Rect
-                  x={132}
-                  y={30}
-                  width={260}
-                  height={90}
-                  rx={22}
-                  fill="#172554"
-                  stroke={PsychoPalette.vehicleBlueLight}
-                  strokeWidth={2.5}
-                />
-
-                {/* COMPARTIMIENTO DEL MOTOR (DELANTERO) */}
-                <Rect
-                  x={142}
-                  y={38}
-                  width={68}
-                  height={74}
-                  rx={10}
-                  fill={engineOk ? 'rgba(0, 245, 160, 0.2)' : 'rgba(245, 158, 11, 0.22)'}
-                  stroke={engineOk ? PsychoPalette.mint : PsychoPalette.amberWarning}
-                  strokeWidth={2}
-                />
-                <SvgText x={176} y={72} fill="#FFFFFF" fontSize="10" fontWeight="bold" textAnchor="middle">
-                  MOTOR
-                </SvgText>
-                <SvgText
-                  x={176}
-                  y={86}
-                  fill={engineOk ? PsychoPalette.mint : PsychoPalette.amberWarning}
-                  fontSize="8"
-                  fontWeight="bold"
-                  textAnchor="middle">
-                  {engineOk ? 'FLUIDOS OK' : 'REVISAR'}
-                </SvgText>
-
-                {/* CABINA / MANDOS / ESPEJOS */}
-                <Rect
-                  x={218}
-                  y={38}
-                  width={96}
-                  height={74}
-                  rx={8}
-                  fill={cabinOk ? 'rgba(0, 245, 160, 0.2)' : 'rgba(0, 217, 245, 0.18)'}
-                  stroke={cabinOk ? PsychoPalette.mint : PsychoPalette.cyan}
-                  strokeWidth={2}
-                />
-                <SvgText x={266} y={72} fill="#FFFFFF" fontSize="10" fontWeight="bold" textAnchor="middle">
-                  CABINA &amp; MANDOS
-                </SvgText>
-                <SvgText
-                  x={266}
-                  y={86}
-                  fill={cabinOk ? PsychoPalette.mint : PsychoPalette.cyan}
-                  fontSize="8"
-                  fontWeight="bold"
-                  textAnchor="middle">
-                  {cabinOk ? 'MANDOS OK' : 'ESPEJOS/FRENO'}
-                </SvgText>
-
-                {/* ESPEJOS LATERALES IZQUIERDO Y DERECHO */}
-                <Circle
-                  cx={222}
-                  cy={24}
-                  r={6}
-                  fill={lightsOk ? PsychoPalette.mint : PsychoPalette.amberWarning}
-                />
-                <Circle
-                  cx={222}
-                  cy={126}
-                  r={6}
-                  fill={lightsOk ? PsychoPalette.mint : PsychoPalette.amberWarning}
-                />
-
-                {/* BAÚL / EQUIPO DE CARRETERA */}
-                <Rect
-                  x={322}
-                  y={40}
-                  width={60}
-                  height={70}
-                  rx={10}
-                  fill={kitOk ? 'rgba(0, 245, 160, 0.2)' : 'rgba(245, 158, 11, 0.2)'}
-                  stroke={kitOk ? PsychoPalette.mint : PsychoPalette.amberWarning}
-                  strokeWidth={2}
-                />
-                <SvgText x={352} y={72} fill="#FFFFFF" fontSize="9" fontWeight="bold" textAnchor="middle">
-                  KIT VIAL
-                </SvgText>
-                <SvgText
-                  x={352}
-                  y={85}
-                  fill={kitOk ? PsychoPalette.mint : PsychoPalette.amberWarning}
-                  fontSize="8"
-                  fontWeight="bold"
-                  textAnchor="middle">
-                  {kitOk ? 'PESV OK' : 'EXTINTOR'}
-                </SvgText>
-
-                {/* Etiquetas de presión PSI en las esquinas */}
-                <G>
-                  <SvgText
-                    x={86}
-                    y={32}
-                    fill={fixedAnomalies['tires-front'] ? PsychoPalette.mint : PsychoPalette.redSignalBright}
-                    fontSize="10"
-                    fontWeight="bold">
-                    {fixedAnomalies['tires-front'] ? 'DEL-IZQ: 32 PSI' : 'DEL-IZQ: 21 PSI !'}
-                  </SvgText>
-                  <SvgText x={86} y={132} fill={PsychoPalette.mint} fontSize="10" fontWeight="bold">
-                    DEL-DER: 32 PSI
-                  </SvgText>
-                  <SvgText x={405} y={32} fill={PsychoPalette.mint} fontSize="10" fontWeight="bold">
-                    TRAS-IZQ: 32 PSI
-                  </SvgText>
-                  <SvgText x={405} y={132} fill={PsychoPalette.mint} fontSize="10" fontWeight="bold">
-                    TRAS-DER: 32 PSI
-                  </SvgText>
-                </G>
-              </Svg>
-            </View>
-
-            {/* PESTAÑAS DE ZONAS DE INSPECCIÓN */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categoryTabsRow}>
-              {CATEGORY_TABS.map((tab) => {
-                const active = selectedCategory === tab.id;
-                const done =
-                  tab.id === 'ALL'
-                    ? checkedCount === totalItems && remainingAnomalies === 0
-                    : isCategoryComplete(tab.id);
+              {STATIONS.map((st, idx) => {
+                const isSelected = idx === activeIndex;
+                const isDone = solvedMap[st.id];
                 return (
-                  <Pressable
-                    key={tab.id}
-                    onPress={() => setSelectedCategory(tab.id)}
-                    style={[
-                      styles.categoryChip,
-                      active && styles.categoryChipActive,
-                      done && styles.categoryChipDone,
-                    ]}>
-                    <Ionicons
-                      name={done ? 'checkmark-circle' : 'construct-outline'}
-                      size={13}
-                      color={
-                        done
+                  <G key={st.id}>
+                    {isSelected ? (
+                      <Circle
+                        cx={st.carZoneCoords.cx}
+                        cy={st.carZoneCoords.cy}
+                        r={16}
+                        fill="rgba(0, 217, 245, 0.28)"
+                        stroke={PsychoPalette.cyan}
+                        strokeWidth={2}
+                      />
+                    ) : null}
+                    <Circle
+                      cx={st.carZoneCoords.cx}
+                      cy={st.carZoneCoords.cy}
+                      r={10}
+                      fill={
+                        isDone
                           ? PsychoPalette.mint
-                          : active
+                          : isSelected
                             ? PsychoPalette.cyan
-                            : PsychoPalette.textSecondary
+                            : PsychoPalette.amberWarning
                       }
+                      stroke="#050A14"
+                      strokeWidth={2}
                     />
-                    <Text
-                      style={[
-                        styles.categoryChipText,
-                        active && styles.categoryChipTextActive,
-                        done && { color: PsychoPalette.mint },
-                      ]}>
-                      {tab.label}
-                    </Text>
-                  </Pressable>
+                    <SvgText
+                      x={st.carZoneCoords.cx}
+                      y={st.carZoneCoords.cy + 3.5}
+                      fill="#050A14"
+                      fontSize="9"
+                      fontWeight="bold"
+                      textAnchor="middle">
+                      {st.stepNum}
+                    </SvgText>
+                  </G>
                 );
               })}
-            </ScrollView>
+            </Svg>
           </View>
 
-          {/* BANNER DE ESTADO Y ALERTA DE FALLAS */}
-          <View
-            style={[
-              styles.statusBanner,
-              remainingAnomalies === 0 && checkedCount === totalItems && styles.statusBannerReady,
-            ]}>
-            <Ionicons
-              name={
-                remainingAnomalies === 0 && checkedCount === totalItems
-                  ? 'shield-checkmark'
-                  : 'alert-circle'
-              }
-              size={18}
-              color={
-                remainingAnomalies === 0 && checkedCount === totalItems
-                  ? PsychoPalette.mint
-                  : PsychoPalette.amberWarning
-              }
-            />
-            <Text style={styles.statusBannerText}>{statusMessage}</Text>
-          </View>
+          {/* Pestañas horizontales de los 6 sistemas */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.stationTabsRow}>
+            {STATIONS.map((st, idx) => {
+              const active = idx === activeIndex;
+              const done = solvedMap[st.id];
+              return (
+                <Pressable
+                  key={st.id}
+                  onPress={() => handleSelectStation(idx)}
+                  style={[
+                    styles.stationTab,
+                    active && styles.stationTabActive,
+                    done && styles.stationTabDone,
+                  ]}>
+                  <Ionicons
+                    name={done ? 'checkmark-circle' : 'alert-circle'}
+                    size={14}
+                    color={
+                      done
+                        ? PsychoPalette.mint
+                        : active
+                          ? PsychoPalette.cyan
+                          : PsychoPalette.amberWarning
+                    }
+                  />
+                  <Text
+                    style={[
+                      styles.stationTabText,
+                      active && { color: PsychoPalette.cyan },
+                      done && { color: PsychoPalette.mint },
+                    ]}>
+                    {st.shortTitle}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
         </View>
 
-        {/* LISTA DE LOS 15 PUNTOS DE CONTROL PREOPERACIONAL */}
-        <View style={styles.checklistColumn}>
-          {filteredItems.map((item, idx) => {
-            const isChecked = !!checkedIds[item.id];
-            const hasUnfixedAnomaly = !!item.hasInitialAnomaly && !fixedAnomalies[item.id];
-            const wasAnomalyFixed = !!item.hasInitialAnomaly && !!fixedAnomalies[item.id];
+        {/* 2. VISOR INTERACTIVO ENCIMA DE LA PIEZA: MUESTRA EL PROBLEMA Y CÓMO QUEDA LA SOLUCIÓN */}
+        <View
+          style={[
+            styles.visualStageCard,
+            showingSolution ? styles.visualStageCardSolved : styles.visualStageCardProblem,
+          ]}>
+          {/* Encabezado de la pieza e interruptor Problema vs Solución */}
+          <View style={styles.stageTopBar}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.stageStepTag}>
+                PUNTO {currentStation.stepNum} DE {STATIONS.length} • INSPECCIÓN VISUAL INTERACTIVA
+              </Text>
+              <Text style={styles.stageSystemTitle}>{currentStation.systemTitle}</Text>
+            </View>
 
-            return (
-              <View
-                key={item.id}
+            {/* Interruptor para comparar cómo se ve el Problema vs la Solución encima de la pieza */}
+            <View style={styles.compareSwitchGroup}>
+              <Pressable
+                onPress={() => setViewMode('PROBLEM')}
                 style={[
-                  styles.checkCard,
-                  isChecked && styles.checkCardDone,
-                  hasUnfixedAnomaly && styles.checkCardAnomaly,
+                  styles.compareSwitchBtn,
+                  !showingSolution && styles.compareSwitchBtnProblemActive,
                 ]}>
-                <View style={styles.checkCardTop}>
-                  <View style={styles.checkCategoryBadge}>
-                    <Text style={styles.checkCategoryBadgeText}>
-                      #{idx + 1} • {item.categoryLabel}
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.specPill,
-                      hasUnfixedAnomaly && {
-                        borderColor: PsychoPalette.redSignalBright,
-                        backgroundColor: PsychoPalette.redSignalDim,
-                      },
-                    ]}>
-                    <Text
-                      style={[
-                        styles.specPillText,
-                        hasUnfixedAnomaly && { color: PsychoPalette.redSignalBright },
-                      ]}>
-                      {hasUnfixedAnomaly ? 'REQUIERE AJUSTE' : item.specValue}
-                    </Text>
-                  </View>
-                </View>
+                <Ionicons
+                  name="warning-outline"
+                  size={13}
+                  color={!showingSolution ? '#FFFFFF' : PsychoPalette.textSecondary}
+                />
+                <Text
+                  style={[
+                    styles.compareSwitchText,
+                    !showingSolution && { color: '#FFFFFF' },
+                  ]}>
+                  VER PROBLEMA
+                </Text>
+              </Pressable>
 
-                <View style={styles.checkMainRow}>
-                  <View style={styles.checkTextCol}>
-                    <Text style={styles.checkTitle}>{item.title}</Text>
-                    <Text style={styles.checkDetail}>{item.detail}</Text>
-                  </View>
+              <Pressable
+                onPress={() => {
+                  if (isCurrentSolved) {
+                    setViewMode('SOLUTION');
+                  } else {
+                    handleApplySolution();
+                  }
+                }}
+                style={[
+                  styles.compareSwitchBtn,
+                  showingSolution && styles.compareSwitchBtnSolutionActive,
+                ]}>
+                <Ionicons
+                  name="checkmark-done"
+                  size={13}
+                  color={showingSolution ? '#050A14' : PsychoPalette.textSecondary}
+                />
+                <Text
+                  style={[
+                    styles.compareSwitchText,
+                    showingSolution && { color: '#050A14' },
+                  ]}>
+                  VER SOLUCIÓN
+                </Text>
+              </Pressable>
+            </View>
+          </View>
 
-                  <Pressable
-                    onPress={() => handleToggleCheck(item)}
-                    style={[
-                      styles.verifyToggleBtn,
-                      isChecked && styles.verifyToggleBtnActive,
-                      hasUnfixedAnomaly && styles.verifyToggleBtnLocked,
-                    ]}>
-                    <Ionicons
-                      name={
-                        isChecked
-                          ? 'checkmark-circle'
-                          : hasUnfixedAnomaly
-                            ? 'build-outline'
-                            : 'ellipse-outline'
-                      }
-                      size={20}
-                      color={
-                        isChecked
-                          ? PsychoPalette.bgPrimary
-                          : hasUnfixedAnomaly
-                            ? PsychoPalette.amberWarning
-                            : PsychoPalette.cyan
-                      }
-                    />
-                    <Text
-                      style={[
-                        styles.verifyToggleText,
-                        isChecked && { color: PsychoPalette.bgPrimary },
-                      ]}>
-                      {isChecked ? 'VERIFICADO' : 'VERIFICAR'}
-                    </Text>
-                  </Pressable>
-                </View>
-
-                {/* SI TIENE UNA FALLA SIMULADA, MOSTRAR EL BOTÓN DE CORRECCIÓN MECÁNICA */}
-                {hasUnfixedAnomaly ? (
-                  <View style={styles.anomalyActionBox}>
-                    <View style={styles.anomalyTextRow}>
-                      <Ionicons name="warning" size={16} color={PsychoPalette.amberWarning} />
-                      <Text style={styles.anomalyAlertText}>{item.anomalyDescription}</Text>
-                    </View>
-                    <Pressable
-                      onPress={() => handleFixAnomaly(item)}
-                      style={({ pressed }) => [
-                        styles.fixAnomalyBtn,
-                        pressed && { opacity: 0.85 },
-                      ]}>
-                      <Ionicons name="construct" size={14} color={PsychoPalette.bgPrimary} />
-                      <Text style={styles.fixAnomalyBtnText}>{item.fixActionLabel}</Text>
-                    </Pressable>
-                  </View>
-                ) : wasAnomalyFixed ? (
-                  <View style={styles.anomalyFixedBar}>
-                    <Ionicons name="checkmark-done" size={14} color={PsychoPalette.mint} />
-                    <Text style={styles.anomalyFixedText}>
-                      Anomalía técnica corregida y calibrada según norma ({item.specValue})
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            );
-          })}
-        </View>
-
-        {/* BOTÓN DE CERTIFICACIÓN FINAL Y NAVEGACIÓN AL SIMULADOR 3D */}
-        <View style={styles.footerCertifyPanel}>
-          <Pressable
-            onPress={handleCertifyPreoperational}
-            style={({ pressed }) => [
-              styles.certifyPrimaryBtn,
-              pressed && { opacity: 0.88 },
-            ]}>
-            <Ionicons name="shield-checkmark" size={20} color={PsychoPalette.bgPrimary} />
-            <Text style={styles.certifyPrimaryBtnText}>
-              CERTIFICAR INSPECCIÓN PREOPERACIONAL ({checkedCount}/{totalItems})
-            </Text>
-          </Pressable>
-
-          {certifiedGrade ? (
-            <View style={styles.certifiedResultBox}>
+          {/* ESCENA GRÁFICA DINÁMICA ENCIMA DEL COMPONENTE */}
+          <View style={styles.interactiveGraphicContainer}>
+            {renderInteractiveComponentScene()}
+            <View
+              style={[
+                styles.liveMetricBadge,
+                showingSolution ? styles.liveMetricBadgeMint : styles.liveMetricBadgeRed,
+              ]}>
               <Text
                 style={[
-                  styles.certifiedGradeText,
-                  {
-                    color:
-                      certifiedGrade === 'EXCELENTE'
-                        ? PsychoPalette.mint
-                        : certifiedGrade === 'APTO'
-                          ? PsychoPalette.cyan
-                          : PsychoPalette.redSignalBright,
-                  },
+                  styles.liveMetricBadgeText,
+                  { color: showingSolution ? PsychoPalette.mint : PsychoPalette.redSignalBright },
                 ]}>
-                RESULTADO REGISTRADO: {certifiedGrade}
+                {showingSolution ? currentStation.solutionMetric : currentStation.problemMetric}
               </Text>
-              <View style={styles.nextButtonsRow}>
-                <Pressable
-                  onPress={() => router.push('/reaction')}
-                  style={styles.goReactionBtn}>
-                  <Ionicons name="headset" size={15} color={PsychoPalette.bgPrimary} />
-                  <Text style={styles.goNextBtnText}>IR A PRUEBA DE SONIDO</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => router.push('/maneuvers')}
-                  style={styles.goSim3DBtn}>
-                  <Ionicons name="car-sport" size={15} color={PsychoPalette.bgPrimary} />
-                  <Text style={styles.goNextBtnText}>ENTRAR AL SIMULADOR 3D</Text>
-                </Pressable>
-              </View>
             </View>
-          ) : null}
+          </View>
+
+          {/* TARJETAS COMPARATIVAS DE APRENDIZAJE: EL PROBLEMA VS CÓMO QUEDA LA SOLUCIÓN */}
+          <View style={styles.comparisonBoxesRow}>
+            {/* Caja del Problema */}
+            <View
+              style={[
+                styles.explanationBox,
+                styles.problemBox,
+                !showingSolution && styles.activeFocusBoxRed,
+              ]}>
+              <View style={styles.boxHeaderRow}>
+                <Ionicons name="close-circle" size={16} color={PsychoPalette.redSignalBright} />
+                <Text style={[styles.boxHeaderTitle, { color: PsychoPalette.redSignalBright }]}>
+                  {currentStation.problemTitle}
+                </Text>
+              </View>
+              <Text style={styles.boxBodyText}>{currentStation.problemExplanation}</Text>
+              <Text style={styles.consequenceText}>
+                Consecuencia: {currentStation.problemConsequence}
+              </Text>
+            </View>
+
+            {/* Caja de la Solución */}
+            <View
+              style={[
+                styles.explanationBox,
+                styles.solutionBox,
+                showingSolution && styles.activeFocusBoxMint,
+              ]}>
+              <View style={styles.boxHeaderRow}>
+                <Ionicons name="checkmark-circle" size={16} color={PsychoPalette.mint} />
+                <Text style={[styles.boxHeaderTitle, { color: PsychoPalette.mint }]}>
+                  {currentStation.solutionTitle}
+                </Text>
+              </View>
+              <Text style={styles.boxBodyText}>{currentStation.solutionExplanation}</Text>
+              <Text style={styles.solutionStatusTag}>
+                {isCurrentSolved
+                  ? '✓ SOLUCIÓN APLICADA Y VERIFICADA EN EL VEHÍCULO'
+                  : 'Pendiente: Presione el botón inferior para aplicar la solución'}
+              </Text>
+            </View>
+          </View>
+
+          {/* BOTÓN DE ACCIÓN PARA REPARAR LA FALLA Y NAVEGAR ENTRE COMPONENTES */}
+          <View style={styles.stageActionFooter}>
+            <Pressable
+              onPress={() =>
+                handleSelectStation((activeIndex - 1 + STATIONS.length) % STATIONS.length)
+              }
+              style={styles.navStepBtn}>
+              <Ionicons name="chevron-back" size={16} color={PsychoPalette.textPrimary} />
+              <Text style={styles.navStepBtnText}>ANTERIOR</Text>
+            </Pressable>
+
+            {!isCurrentSolved ? (
+              <Pressable
+                onPress={handleApplySolution}
+                style={({ pressed }) => [
+                  styles.applySolutionBtn,
+                  pressed && { opacity: 0.88, transform: [{ scale: 0.99 }] },
+                ]}>
+                <Ionicons name="construct" size={18} color={PsychoPalette.bgPrimary} />
+                <Text style={styles.applySolutionBtnText}>{currentStation.actionButtonLabel}</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={() => {
+                  if (activeIndex < STATIONS.length - 1) {
+                    handleSelectStation(activeIndex + 1);
+                  } else {
+                    router.push('/maneuvers');
+                  }
+                }}
+                style={styles.nextSolvedBtn}>
+                <Ionicons name="checkmark-done-circle" size={18} color={PsychoPalette.bgPrimary} />
+                <Text style={styles.applySolutionBtnText}>
+                  {activeIndex < STATIONS.length - 1
+                    ? 'SOLUCIONADO • PASAR AL SIGUIENTE SISTEMA'
+                    : '¡PREOPERACIONAL 100%! IR AL SIMULADOR 3D'}
+                </Text>
+              </Pressable>
+            )}
+
+            <Pressable
+              onPress={() => handleSelectStation((activeIndex + 1) % STATIONS.length)}
+              style={styles.navStepBtn}>
+              <Text style={styles.navStepBtnText}>SIGUIENTE</Text>
+              <Ionicons name="chevron-forward" size={16} color={PsychoPalette.textPrimary} />
+            </Pressable>
+          </View>
         </View>
+
+        {/* RESUMEN FINAL CUANDO SE COMPLETAN LAS 6 SOLUCIONES */}
+        {certifiedGrade ? (
+          <View style={styles.certifiedBanner}>
+            <Ionicons name="shield-checkmark" size={26} color={PsychoPalette.mint} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.certifiedBannerTitle}>
+                ¡VEHÍCULO 100% REVISADO Y APTO PARA OPERAR ({certifiedGrade})!
+              </Text>
+              <Text style={styles.certifiedBannerSub}>
+                Ha inspeccionado visualmente cada sistema, identificado los problemas y aplicado las
+                6 soluciones técnicas.
+              </Text>
+            </View>
+            <Pressable onPress={() => router.push('/maneuvers')} style={styles.goSimBtn}>
+              <Text style={styles.goSimBtnText}>IR A PISTA 3D</Text>
+              <Ionicons name="arrow-forward" size={14} color={PsychoPalette.bgPrimary} />
+            </Pressable>
+          </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -804,354 +1003,313 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 12,
     paddingVertical: 10,
-    paddingBottom: 32,
+    paddingBottom: 28,
     gap: 12,
     maxWidth: 960,
     width: '100%',
     alignSelf: 'center',
   },
-  topOverviewCard: {
+  carMapSelectorCard: {
     backgroundColor: PsychoPalette.bgSecondary,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: PsychoPalette.borderSubtle,
     padding: 12,
-    gap: 10,
-  },
-  metricsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  metricCell: {
-    flex: 1,
-    minWidth: 100,
-    backgroundColor: PsychoPalette.bgPanel,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: PsychoPalette.borderSubtle,
-    paddingVertical: 7,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-  },
-  metricLabel: {
-    color: PsychoPalette.textMuted,
-    fontSize: 9,
-    fontWeight: '800',
-    fontFamily: Fonts.mono,
-  },
-  metricValue: {
-    fontSize: 14,
-    fontWeight: '900',
-    fontFamily: Fonts.mono,
-    marginTop: 2,
-  },
-  carBlueprintBox: {
-    backgroundColor: PsychoPalette.bgPanel,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: PsychoPalette.borderSubtle,
-    padding: 10,
     gap: 8,
   },
-  blueprintHeader: {
+  carMapTopHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
   },
-  blueprintTitle: {
+  carMapTitle: {
     color: PsychoPalette.textSecondary,
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '900',
     fontFamily: Fonts.mono,
   },
-  quickVerifyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
+  progressBadge: {
     backgroundColor: PsychoPalette.mintDim,
     borderWidth: 1,
     borderColor: PsychoPalette.mint,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 7,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
-  quickVerifyBtnText: {
+  progressBadgeText: {
     color: PsychoPalette.mint,
     fontSize: 10,
     fontWeight: '900',
     fontFamily: Fonts.mono,
   },
-  svgDiagramWrapper: {
-    width: '100%',
-    alignItems: 'center',
+  miniCarSvgBox: {
+    backgroundColor: PsychoPalette.bgPanel,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: PsychoPalette.borderSubtle,
+    paddingVertical: 2,
   },
-  categoryTabsRow: {
+  stationTabsRow: {
     flexDirection: 'row',
     gap: 6,
     paddingTop: 2,
   },
-  categoryChip: {
+  stationTab: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     backgroundColor: PsychoPalette.bgCard,
     borderWidth: 1,
     borderColor: PsychoPalette.borderSubtle,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 9,
   },
-  categoryChipActive: {
+  stationTabActive: {
     backgroundColor: PsychoPalette.cyanDim,
     borderColor: PsychoPalette.cyan,
   },
-  categoryChipDone: {
+  stationTabDone: {
     borderColor: PsychoPalette.mint,
   },
-  categoryChipText: {
+  stationTabText: {
     color: PsychoPalette.textSecondary,
     fontSize: 10,
     fontWeight: '800',
     fontFamily: Fonts.mono,
   },
-  categoryChipTextActive: {
-    color: PsychoPalette.cyan,
-  },
-  statusBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-    borderWidth: 1,
-    borderColor: PsychoPalette.amberWarning,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  statusBannerReady: {
-    backgroundColor: PsychoPalette.mintDim,
-    borderColor: PsychoPalette.mint,
-  },
-  statusBannerText: {
-    color: PsychoPalette.textPrimary,
-    fontSize: 12,
-    flex: 1,
-    lineHeight: 17,
-  },
-  checklistColumn: {
-    gap: 9,
-  },
-  checkCard: {
+  visualStageCard: {
     backgroundColor: PsychoPalette.bgCard,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: PsychoPalette.borderSubtle,
-    padding: 12,
-    gap: 8,
-  },
-  checkCardDone: {
-    borderColor: 'rgba(0, 245, 160, 0.45)',
-    backgroundColor: '#0B192C',
-  },
-  checkCardAnomaly: {
-    borderColor: PsychoPalette.amberWarning,
-  },
-  checkCardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  checkCategoryBadge: {
-    backgroundColor: PsychoPalette.bgPanel,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: PsychoPalette.borderSubtle,
-  },
-  checkCategoryBadgeText: {
-    color: PsychoPalette.cyan,
-    fontSize: 9,
-    fontWeight: '800',
-    fontFamily: Fonts.mono,
-  },
-  specPill: {
-    backgroundColor: PsychoPalette.mintDim,
-    borderWidth: 1,
-    borderColor: PsychoPalette.mint,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 5,
-  },
-  specPillText: {
-    color: PsychoPalette.mint,
-    fontSize: 9,
-    fontWeight: '900',
-    fontFamily: Fonts.mono,
-  },
-  checkMainRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  checkTextCol: {
-    flex: 1,
-    gap: 3,
-  },
-  checkTitle: {
-    color: PsychoPalette.textPrimary,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  checkDetail: {
-    color: PsychoPalette.textSecondary,
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  verifyToggleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: PsychoPalette.bgPanel,
-    borderWidth: 1.5,
-    borderColor: PsychoPalette.cyan,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 9,
-  },
-  verifyToggleBtnActive: {
-    backgroundColor: PsychoPalette.mint,
-    borderColor: PsychoPalette.mint,
-  },
-  verifyToggleBtnLocked: {
-    borderColor: PsychoPalette.amberWarning,
-  },
-  verifyToggleText: {
-    color: PsychoPalette.cyan,
-    fontSize: 10,
-    fontWeight: '900',
-    fontFamily: Fonts.mono,
-  },
-  anomalyActionBox: {
-    backgroundColor: 'rgba(245, 158, 11, 0.14)',
-    borderWidth: 1,
-    borderColor: PsychoPalette.amberWarning,
-    borderRadius: 9,
-    padding: 9,
-    gap: 7,
-  },
-  anomalyTextRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  anomalyAlertText: {
-    color: '#FDE68A',
-    fontSize: 11,
-    fontWeight: '700',
-    flex: 1,
-  },
-  fixAnomalyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: PsychoPalette.amberWarning,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 7,
-  },
-  fixAnomalyBtnText: {
-    color: PsychoPalette.bgPrimary,
-    fontSize: 11,
-    fontWeight: '900',
-    fontFamily: Fonts.mono,
-  },
-  anomalyFixedBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: PsychoPalette.mintDim,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 6,
-  },
-  anomalyFixedText: {
-    color: PsychoPalette.mint,
-    fontSize: 10,
-    fontWeight: '700',
-    fontFamily: Fonts.mono,
-  },
-  footerCertifyPanel: {
-    backgroundColor: PsychoPalette.bgSecondary,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: PsychoPalette.borderSubtle,
+    borderRadius: 16,
+    borderWidth: 2,
     padding: 14,
     gap: 12,
-    marginTop: 4,
   },
-  certifyPrimaryBtn: {
+  visualStageCardProblem: {
+    borderColor: PsychoPalette.amberWarning,
+  },
+  visualStageCardSolved: {
+    borderColor: PsychoPalette.mint,
+  },
+  stageTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  stageStepTag: {
+    color: PsychoPalette.cyan,
+    fontSize: 10,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  stageSystemTitle: {
+    color: PsychoPalette.textPrimary,
+    fontSize: 17,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  compareSwitchGroup: {
+    flexDirection: 'row',
+    backgroundColor: PsychoPalette.bgPanel,
+    borderRadius: 9,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: PsychoPalette.borderSubtle,
+    gap: 4,
+  },
+  compareSwitchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 7,
+  },
+  compareSwitchBtnProblemActive: {
+    backgroundColor: PsychoPalette.redSignal,
+  },
+  compareSwitchBtnSolutionActive: {
+    backgroundColor: PsychoPalette.mint,
+  },
+  compareSwitchText: {
+    color: PsychoPalette.textSecondary,
+    fontSize: 10,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  interactiveGraphicContainer: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 6,
+  },
+  liveMetricBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  liveMetricBadgeRed: {
+    backgroundColor: PsychoPalette.redSignalDim,
+    borderColor: PsychoPalette.redSignalBright,
+  },
+  liveMetricBadgeMint: {
+    backgroundColor: PsychoPalette.mintDim,
+    borderColor: PsychoPalette.mint,
+  },
+  liveMetricBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  comparisonBoxesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  explanationBox: {
+    flex: 1,
+    minWidth: 250,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1.5,
+    gap: 6,
+  },
+  problemBox: {
+    backgroundColor: 'rgba(127, 29, 29, 0.16)',
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+  },
+  solutionBox: {
+    backgroundColor: 'rgba(6, 78, 59, 0.18)',
+    borderColor: 'rgba(0, 245, 160, 0.35)',
+  },
+  activeFocusBoxRed: {
+    borderColor: PsychoPalette.redSignalBright,
+    backgroundColor: 'rgba(127, 29, 29, 0.28)',
+  },
+  activeFocusBoxMint: {
+    borderColor: PsychoPalette.mint,
+    backgroundColor: 'rgba(6, 78, 59, 0.32)',
+  },
+  boxHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  boxHeaderTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    flex: 1,
+  },
+  boxBodyText: {
+    color: PsychoPalette.textPrimary,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  consequenceText: {
+    color: '#FCA5A5',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  solutionStatusTag: {
+    color: PsychoPalette.mint,
+    fontSize: 11,
+    fontWeight: '800',
+    fontFamily: Fonts.mono,
+    marginTop: 2,
+  },
+  stageActionFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginTop: 2,
+  },
+  navStepBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: PsychoPalette.bgPanel,
+    borderWidth: 1,
+    borderColor: PsychoPalette.borderSubtle,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 10,
+  },
+  navStepBtnText: {
+    color: PsychoPalette.textPrimary,
+    fontSize: 10,
+    fontWeight: '800',
+    fontFamily: Fonts.mono,
+  },
+  applySolutionBtn: {
+    flex: 1,
+    minWidth: 220,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: PsychoPalette.amberWarning,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+  },
+  nextSolvedBtn: {
+    flex: 1,
+    minWidth: 220,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     backgroundColor: PsychoPalette.mint,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 11,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
   },
-  certifyPrimaryBtnText: {
+  applySolutionBtnText: {
     color: PsychoPalette.bgPrimary,
+    fontSize: 11,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+    textAlign: 'center',
+  },
+  certifiedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: PsychoPalette.mintDim,
+    borderWidth: 1.5,
+    borderColor: PsychoPalette.mint,
+    borderRadius: 14,
+    padding: 14,
+    flexWrap: 'wrap',
+  },
+  certifiedBannerTitle: {
+    color: PsychoPalette.mint,
     fontSize: 13,
     fontWeight: '900',
     fontFamily: Fonts.mono,
-    letterSpacing: 0.5,
   },
-  certifiedResultBox: {
-    backgroundColor: PsychoPalette.bgPanel,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: PsychoPalette.borderSubtle,
-    padding: 12,
-    alignItems: 'center',
-    gap: 10,
+  certifiedBannerSub: {
+    color: PsychoPalette.textPrimary,
+    fontSize: 12,
+    marginTop: 2,
   },
-  certifiedGradeText: {
-    fontSize: 15,
-    fontWeight: '900',
-    fontFamily: Fonts.mono,
-  },
-  nextButtonsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: 'center',
-  },
-  goReactionBtn: {
+  goSimBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: PsychoPalette.cyan,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    borderRadius: 8,
-  },
-  goSim3DBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    gap: 5,
     backgroundColor: PsychoPalette.mint,
     paddingHorizontal: 13,
     paddingVertical: 9,
     borderRadius: 8,
   },
-  goNextBtnText: {
+  goSimBtnText: {
     color: PsychoPalette.bgPrimary,
     fontSize: 11,
     fontWeight: '900',
