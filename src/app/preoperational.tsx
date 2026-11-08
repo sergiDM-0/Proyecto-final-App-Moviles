@@ -196,12 +196,40 @@ export default function PreoperationalScreen() {
   const showingSolution = viewMode === 'SOLUTION';
 
   const speakTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const utterancesRef = useRef<SpeechSynthesisUtterance[]>([]);
+  const speakTokenRef = useRef(0);
+  const nativeVoiceRef = useRef<string | undefined>(undefined);
+  const nativeLangRef = useRef<string | undefined>(undefined);
+
+  // Elige la voz nativa (iOS/Android) de mayor calidad en español, la más "humana" disponible
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    Speech.getAvailableVoicesAsync()
+      .then((voices) => {
+        // En iOS la lista incluye voces "compact" que NO están descargadas y hacen fallar speak().
+        // Solo se usa una voz si es Enhanced/Premium (descargada); si no, se usa solo el idioma.
+        const es = voices.filter(
+          (v) => v.language?.toLowerCase().startsWith('es') && !/compact/i.test(v.identifier)
+        );
+        const best =
+          es.find((v) => v.quality === 'Enhanced' && /es-(CO|MX|419|US)/i.test(v.language)) ??
+          es.find((v) => v.quality === 'Enhanced');
+        nativeVoiceRef.current = best?.identifier;
+        nativeLangRef.current = best?.language ?? 'es-MX';
+      })
+      .catch(() => {});
+  }, []);
 
   const stopVoiceNarration = useCallback(() => {
+    speakTokenRef.current += 1;
     if (speakTimerRef.current) {
       clearTimeout(speakTimerRef.current);
       speakTimerRef.current = null;
+    }
+    if (watchdogRef.current) {
+      clearTimeout(watchdogRef.current);
+      watchdogRef.current = null;
     }
     try {
       Speech.stop();
@@ -221,42 +249,112 @@ export default function PreoperationalScreen() {
   const speakNarration = useCallback(
     (text: string) => {
       stopVoiceNarration();
+      const token = speakTokenRef.current;
       setIsSpeaking(true);
 
-      // Chrome/Android descartan un speak() inmediato tras cancel(): se espera un instante
-      // para que la voz de cada lección suene completa y no se silencie al arrancar.
-      speakTimerRef.current = setTimeout(() => {
-        speakTimerRef.current = null;
-        if (Platform.OS === 'web' && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      const isWeb =
+        Platform.OS === 'web' && typeof window !== 'undefined' && 'speechSynthesis' in window;
+
+      // Voz web más natural: prioriza voces neuronales/online (Google, Microsoft Natural) en español
+      const pickWebVoice = (): SpeechSynthesisVoice | null => {
+        const voices = window.speechSynthesis
+          .getVoices()
+          .filter((v) => v.lang.toLowerCase().startsWith('es'));
+        if (voices.length === 0) return null;
+        const score = (v: SpeechSynthesisVoice) =>
+          (/natural|online|neural/i.test(v.name) ? 6 : 0) +
+          (/google/i.test(v.name) ? 4 : 0) +
+          (/es-(co|mx|419|us)/i.test(v.lang) ? 2 : /es-es/i.test(v.lang) ? 1 : 0) +
+          (/sabina|paulina|helena|dalia|elena|camila|salome|monica|m[oó]nica|lucia|luc[ií]a/i.test(v.name)
+            ? 1
+            : 0);
+        return [...voices].sort((x, y) => score(y) - score(x))[0];
+      };
+
+      // Se reintenta si el sistema cancela la voz justo al arrancar (ocurre al cambiar de lección)
+      const attempt = (n: number) => {
+        if (token !== speakTokenRef.current) return;
+        let started = false;
+        const markStarted = () => {
+          started = true;
+        };
+
+        if (isWeb) {
           try {
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'es-ES';
-            utterance.rate = 1.0;
-            utterance.pitch = 1.0;
-            utterance.onend = () => setIsSpeaking(false);
-            utterance.onerror = () => setIsSpeaking(false);
-            utteranceRef.current = utterance; // evita que el recolector la descarte a media frase
-            window.speechSynthesis.resume();
-            window.speechSynthesis.speak(utterance);
-            return;
+            // No se cancela aquí: hacer cancel() + speak() seguidos deja trabado el motor de voz
+            // de Chrome (solo hablaba la primera vez). La cancelación se hace antes, con espera.
+            if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+            const voice = pickWebVoice();
+            const sentences = text.match(/[^.:]+[.:]?/g)?.map((t) => t.trim()).filter(Boolean) ?? [text];
+            utterancesRef.current = sentences.map((sentence, i) => {
+              const u = new SpeechSynthesisUtterance(sentence);
+              u.lang = voice?.lang ?? 'es-ES';
+              if (voice) u.voice = voice;
+              u.rate = 0.95;
+              u.pitch = 1.02;
+              u.onstart = markStarted;
+              if (i === sentences.length - 1) {
+                u.onend = () => {
+                  if (token === speakTokenRef.current) setIsSpeaking(false);
+                };
+              }
+              u.onerror = (ev) => {
+                if (ev.error === 'canceled' || ev.error === 'interrupted') return;
+                if (token === speakTokenRef.current) setIsSpeaking(false);
+              };
+              return u;
+            });
+            utterancesRef.current.forEach((u) => window.speechSynthesis.speak(u));
           } catch {
-            // Fallback to expo-speech below
+            setIsSpeaking(false);
+            return;
+          }
+        } else {
+          try {
+            Speech.speak(text, {
+              language: nativeLangRef.current ?? 'es-MX',
+              voice: nativeVoiceRef.current,
+              rate: 0.95,
+              pitch: 1.0,
+              onStart: markStarted,
+              onDone: () => {
+                if (token === speakTokenRef.current) setIsSpeaking(false);
+              },
+              onStopped: () => {},
+              onError: () => {
+                // Si la voz elegida falla, se descarta y se reintenta solo con el idioma
+                nativeVoiceRef.current = undefined;
+                nativeLangRef.current = 'es-MX';
+              },
+            });
+          } catch {
+            setIsSpeaking(false);
+            return;
           }
         }
 
-        try {
-          Speech.speak(text, {
-            language: 'es-ES',
-            rate: 1.0,
-            pitch: 1.0,
-            onDone: () => setIsSpeaking(false),
-            onStopped: () => setIsSpeaking(false),
-            onError: () => setIsSpeaking(false),
-          });
-        } catch {
-          setIsSpeaking(false);
-        }
-      }, 250);
+        watchdogRef.current = setTimeout(() => {
+          if (token !== speakTokenRef.current) return;
+          if (!started && n < 4) {
+            try {
+              if (isWeb) window.speechSynthesis.cancel();
+              else Speech.stop();
+            } catch {
+              // Ignore
+            }
+            // Pausa tras cancelar para que el motor de voz se libere antes de reintentar
+            speakTimerRef.current = setTimeout(() => attempt(n + 1), 400);
+          } else if (!started) {
+            setIsSpeaking(false);
+          }
+        }, 1300);
+      };
+
+      // Espera a que termine el sonido de cambio de lección antes de hablar (evita que lo corte)
+      speakTimerRef.current = setTimeout(() => {
+        speakTimerRef.current = null;
+        attempt(0);
+      }, 700);
     },
     [stopVoiceNarration]
   );
