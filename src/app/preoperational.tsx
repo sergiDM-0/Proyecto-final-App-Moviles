@@ -6,14 +6,12 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, {
   Circle,
-  Defs,
+  Ellipse,
   G,
   Line,
-  LinearGradient,
   Path,
   Polygon,
   Rect,
-  Stop,
   Text as SvgText,
 } from 'react-native-svg';
 
@@ -170,6 +168,221 @@ const STATIONS: LearningStation[] = [
       'Solución aplicada en kit de carretera: extintor vigente en verde y equipo de emergencia completo.',
   },
 ];
+
+const LOOP_INFO: Record<StationId, { problem: string; action: string; result: string }> = {
+  ENGINE: {
+    problem: 'Refrigerante bajo el mínimo: el motor se recalienta',
+    action: 'Con el motor frío, rellenar hasta FULL y medir el aceite con la bayoneta',
+    result: 'Nivel FULL y temperatura estable',
+  },
+  TIRES: {
+    problem: 'Llanta delantera con 21 PSI: flancos aplastados',
+    action: 'Inflar con el calibrador hasta 32 PSI en frío',
+    result: 'Presión 32 PSI y apoyo uniforme',
+  },
+  LIGHTS: {
+    problem: 'Farola derecha apagada: se pierde el 60% de la visibilidad',
+    action: 'Restablecer y alinear ambos faros; probar direccionales y freno',
+    result: 'Doble haz simétrico encendido',
+  },
+  MIRRORS: {
+    problem: 'Espejos cerrados: punto ciego en los carriles vecinos',
+    action: 'Abrir los laterales y centrar el retrovisor interior',
+    result: 'Visión 360° sin puntos ciegos',
+  },
+  CABIN: {
+    problem: 'Cinturón suelto y freno de mano sin tensión',
+    action: 'Abrochar hasta el clic y calibrar el freno de mano (5-7 clics)',
+    result: 'Cinturón anclado y freno firme',
+  },
+  KIT: {
+    problem: 'Extintor descargado y faltan los triángulos',
+    action: 'Cambiar el extintor y completar triángulos, botiquín y herramienta',
+    result: 'Kit de carretera completo',
+  },
+};
+
+// Posición de cada punto sobre la silueta (coordenadas del carro, vista lateral, frente a la izquierda)
+const CAR_ZONES: Record<StationId, { cx: number; cy: number }> = {
+  ENGINE: { cx: 70, cy: 62 },
+  TIRES: { cx: 82, cy: 90 },
+  LIGHTS: { cx: 36, cy: 68 },
+  MIRRORS: { cx: 122, cy: 46 },
+  CABIN: { cx: 190, cy: 42 },
+  KIT: { cx: 298, cy: 70 },
+};
+
+function CarLoopMap({
+  activeIndex,
+  solvedMap,
+  onSelect,
+}: {
+  activeIndex: number;
+  solvedMap: Record<StationId, boolean>;
+  onSelect: (index: number) => void;
+}) {
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 120);
+    return () => clearInterval(timer);
+  }, []);
+
+  const station = STATIONS[activeIndex];
+  const info = LOOP_INFO[station.id];
+  // Bucle: 0 = problema (rojo), 1 = acción (ámbar), 2 = solución (verde); cada fase dura ~1.8 s
+  const phase = Math.floor(tick / 15) % 3;
+  const pulse = Math.sin(tick * 0.55);
+  const phaseColor =
+    phase === 0 ? PsychoPalette.redSignalBright : phase === 1 ? PsychoPalette.amberWarning : PsychoPalette.mint;
+  const zone = CAR_ZONES[station.id];
+  const blink = phase === 0 ? 0.25 + 0.2 * (pulse + 1) : phase === 1 ? 0.3 : 0.28;
+
+  const renderZone = () => {
+    const fill = phaseColor;
+    switch (station.id) {
+      case 'ENGINE':
+        return <Rect x={40} y={54} width={64} height={28} rx={8} fill={fill} opacity={blink} stroke={fill} strokeWidth={2} />;
+      case 'TIRES':
+        return <Circle cx={82} cy={90} r={22} fill={fill} opacity={blink} stroke={fill} strokeWidth={2} />;
+      case 'LIGHTS':
+        return (
+          <G>
+            <Ellipse cx={36} cy={68} rx={12} ry={10} fill={fill} opacity={blink} stroke={fill} strokeWidth={2} />
+            {phase === 2 ? (
+              <Polygon points="26,62 -22,48 -22,86 26,74" fill="rgba(254, 240, 138, 0.55)" />
+            ) : phase === 0 ? (
+              <Polygon points="26,66 -2,62 -2,78 26,72" fill="rgba(254, 240, 138, 0.18)" />
+            ) : (
+              <Polygon points="26,64 -12,54 -12,82 26,74" fill="rgba(254, 240, 138, 0.35)" />
+            )}
+          </G>
+        );
+      case 'MIRRORS':
+        return (
+          <G>
+            <Circle cx={122} cy={46} r={12} fill={fill} opacity={blink} stroke={fill} strokeWidth={2} />
+            {phase === 2 ? (
+              <Polygon points="112,50 60,96 120,100" fill="rgba(0, 245, 160, 0.3)" />
+            ) : (
+              <Polygon points="112,50 98,66 114,66" fill="rgba(239, 68, 68, 0.3)" />
+            )}
+          </G>
+        );
+      case 'CABIN':
+        return <Rect x={130} y={30} width={112} height={26} rx={8} fill={fill} opacity={blink} stroke={fill} strokeWidth={2} />;
+      case 'KIT':
+        return <Rect x={268} y={56} width={58} height={28} rx={8} fill={fill} opacity={blink} stroke={fill} strokeWidth={2} />;
+    }
+  };
+
+  return (
+    <View style={styles.miniCarSvgBox}>
+      <View style={styles.carMapCanvas}>
+      <Svg width="100%" height="100%" viewBox="0 0 400 124">
+        <G transform="translate(36, 0)">
+          {/* Sombra y carretera */}
+          <Ellipse cx={180} cy={112} rx={170} ry={7} fill="rgba(0,0,0,0.45)" />
+          {/* Carrocería */}
+          <Path
+            d="M 28 84 L 28 70 Q 30 62 46 60 L 98 54 L 128 31 Q 134 27 142 27 L 222 27 Q 234 27 242 35 L 264 54 L 316 60 Q 334 62 334 74 L 334 84 Q 334 90 326 90 L 36 90 Q 28 90 28 84 Z"
+            fill="#1E3A8A"
+            stroke="#60A5FA"
+            strokeWidth={2}
+          />
+          {/* Ventanas */}
+          <Polygon points="134,37 166,37 166,54 112,54" fill="#0F172A" stroke="#93C5FD" strokeWidth={1.5} />
+          <Polygon points="174,37 220,37 238,54 174,54" fill="#0F172A" stroke="#93C5FD" strokeWidth={1.5} />
+          {/* Faro y calavera */}
+          <Ellipse cx={34} cy={68} rx={6} ry={5} fill="#FEF08A" />
+          <Rect x={326} y={64} width={8} height={10} rx={2} fill="#EF4444" />
+          {/* Ruedas */}
+          {[82, 276].map((wx) => (
+            <G key={wx}>
+              <Circle cx={wx} cy={90} r={17} fill="#0B1220" stroke="#475569" strokeWidth={2} />
+              <Circle cx={wx} cy={90} r={8} fill="#94A3B8" />
+            </G>
+          ))}
+
+          {/* Zona del problema resaltada según la fase del bucle */}
+          {renderZone()}
+
+          {/* Anillo giratorio de la fase actual */}
+          <Circle
+            cx={zone.cx}
+            cy={zone.cy}
+            r={15 + (phase === 0 ? pulse * 3 : 0)}
+            fill="none"
+            stroke={phaseColor}
+            strokeWidth={2.5}
+            strokeDasharray={phase === 1 ? '6 5' : undefined}
+            strokeDashoffset={phase === 1 ? -tick * 2 : 0}
+          />
+
+          {/* Puntos numerados de los 6 sistemas */}
+          {STATIONS.map((st, idx) => {
+            const z = CAR_ZONES[st.id];
+            const isSelected = idx === activeIndex;
+            const isDone = solvedMap[st.id];
+            return (
+              <G key={st.id}>
+                <Circle
+                  cx={z.cx}
+                  cy={z.cy}
+                  r={isSelected ? 10 : 8}
+                  fill={isDone ? PsychoPalette.mint : isSelected ? phaseColor : PsychoPalette.amberWarning}
+                  stroke="#050A14"
+                  strokeWidth={2}
+                />
+                <SvgText x={z.cx} y={z.cy + 3.5} fill="#050A14" fontSize="9" fontWeight="bold" textAnchor="middle">
+                  {st.stepNum}
+                </SvgText>
+              </G>
+            );
+          })}
+        </G>
+      </Svg>
+      {/* Zonas táctiles (RN) sobre cada punto: los eventos táctiles no se ponen en el SVG para evitar avisos en web */}
+      {STATIONS.map((st, idx) => {
+        const z = CAR_ZONES[st.id];
+        return (
+          <Pressable
+            key={`hit-${st.id}`}
+            onPress={() => onSelect(idx)}
+            accessibilityLabel={`Seleccionar ${st.shortTitle}`}
+            style={[
+              styles.carMapHit,
+              { left: `${((36 + z.cx) / 400) * 100 - 6}%`, top: `${(z.cy / 124) * 100 - 11}%` },
+            ]}
+          />
+        );
+      })}
+      </View>
+
+      {/* Leyenda del bucle: qué pasa → qué hacer → cómo queda */}
+      <View style={[styles.loopCallout, { borderColor: phaseColor }]}>
+        <Ionicons
+          name={phase === 0 ? 'warning' : phase === 1 ? 'construct' : 'checkmark-circle'}
+          size={16}
+          color={phaseColor}
+        />
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.loopCalloutTag, { color: phaseColor }]}>
+            {phase === 0 ? 'PROBLEMA' : phase === 1 ? 'QUÉ HACER' : 'RESULTADO'}
+          </Text>
+          <Text style={styles.loopCalloutText}>
+            {phase === 0 ? info.problem : phase === 1 ? info.action : info.result}
+          </Text>
+        </View>
+        <View style={styles.loopDots}>
+          {[0, 1, 2].map((i) => (
+            <View key={i} style={[styles.loopDot, i === phase && { backgroundColor: phaseColor }]} />
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
 
 export default function PreoperationalScreen() {
   const { setPreoperationalResult } = useEvaluation();
@@ -902,61 +1115,8 @@ export default function PreoperationalScreen() {
             </View>
           </View>
 
-          {/* Mini Silueta del Vehículo con el punto activo resaltado encima */}
-          <View style={styles.miniCarSvgBox}>
-            <Svg width="100%" height={96} viewBox="0 0 360 96">
-              <Defs>
-                <LinearGradient id="carBodyGrad" x1="0" y1="0" x2="1" y2="0">
-                  <Stop offset="0" stopColor="#1E3A8A" />
-                  <Stop offset="1" stopColor="#172554" />
-                </LinearGradient>
-              </Defs>
-              <Rect x={48} y={20} width={264} height={56} rx={16} fill="url(#carBodyGrad)" stroke="#60A5FA" strokeWidth={2} />
-              <Rect x={140} y={25} width={105} height={46} rx={10} fill="#0F172A" stroke="#93C5FD" strokeWidth={1.5} />
-
-              {STATIONS.map((st, idx) => {
-                const isSelected = idx === activeIndex;
-                const isDone = solvedMap[st.id];
-                return (
-                  <G key={st.id}>
-                    {isSelected ? (
-                      <Circle
-                        cx={st.carZoneCoords.cx}
-                        cy={st.carZoneCoords.cy}
-                        r={16}
-                        fill="rgba(0, 217, 245, 0.28)"
-                        stroke={PsychoPalette.cyan}
-                        strokeWidth={2}
-                      />
-                    ) : null}
-                    <Circle
-                      cx={st.carZoneCoords.cx}
-                      cy={st.carZoneCoords.cy}
-                      r={10}
-                      fill={
-                        isDone
-                          ? PsychoPalette.mint
-                          : isSelected
-                            ? PsychoPalette.cyan
-                            : PsychoPalette.amberWarning
-                      }
-                      stroke="#050A14"
-                      strokeWidth={2}
-                    />
-                    <SvgText
-                      x={st.carZoneCoords.cx}
-                      y={st.carZoneCoords.cy + 3.5}
-                      fill="#050A14"
-                      fontSize="9"
-                      fontWeight="bold"
-                      textAnchor="middle">
-                      {st.stepNum}
-                    </SvgText>
-                  </G>
-                );
-              })}
-            </Svg>
-          </View>
+          {/* Silueta del carro con el problema, la acción y la solución en bucle (loop) */}
+          <CarLoopMap activeIndex={activeIndex} solvedMap={solvedMap} onSelect={handleSelectStation} />
 
           {/* Pestañas horizontales de los 6 sistemas */}
           <ScrollView
@@ -1308,6 +1468,51 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: PsychoPalette.borderSubtle,
     paddingVertical: 2,
+  },
+  carMapCanvas: {
+    width: '100%',
+    maxWidth: 560,
+    aspectRatio: 400 / 124,
+    alignSelf: 'center',
+    position: 'relative',
+  },
+  carMapHit: {
+    position: 'absolute',
+    width: '12%',
+    height: '22%',
+  },
+  loopCallout: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 8,
+    marginBottom: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    backgroundColor: 'rgba(5, 10, 20, 0.7)',
+  },
+  loopCalloutTag: {
+    fontSize: 9,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  loopCalloutText: {
+    color: PsychoPalette.textPrimary,
+    fontSize: 11.5,
+    lineHeight: 15,
+    marginTop: 1,
+  },
+  loopDots: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  loopDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: PsychoPalette.borderSubtle,
   },
   stationTabsRow: {
     flexDirection: 'row',

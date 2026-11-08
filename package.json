@@ -37,7 +37,8 @@
     "@types/react": "~19.3.0",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~58.0.4",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "pngjs": "^3.4.0"
   },
   "scripts": {
     "start": "expo start",
@@ -45,7 +46,10 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "bench": "node scripts/bench-world3d.ts",
+    "icons": "node scripts/generate-icons.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "private": true
 }
