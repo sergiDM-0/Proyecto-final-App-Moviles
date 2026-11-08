@@ -159,12 +159,15 @@ export default function ManeuversSimulatorScreen() {
     brake: false,
     gear: 'D' as 'D' | 'R',
     collisions: 0,
-    startTime: performance.now(),
+    startTime: 0,
     lastCollisionTime: 0,
     completed: false,
   });
 
-  const joystickStartRef = useRef({ x: 0, y: 0 });
+  useEffect(() => {
+    const normalizedSteer = joystickKnob.x / JOYSTICK_RADIUS;
+    physicsRef.current.steerRad = normalizedSteer * MAX_STEER_RAD;
+  }, [joystickKnob]);
 
   const resetScenario = useCallback((targetScenario: ScenarioConfig) => {
     const initAngle = (targetScenario.startAngleDeg * Math.PI) / 180;
@@ -225,6 +228,9 @@ export default function ManeuversSimulatorScreen() {
       lastTime = now;
 
       const p = physicsRef.current;
+      if (p.startTime === 0) {
+        p.startTime = now;
+      }
       if (!p.completed) {
         // Elapsed timer
         const elapsed = Number(((now - p.startTime) / 1000).toFixed(1));
@@ -363,25 +369,21 @@ export default function ManeuversSimulatorScreen() {
   // Joystick Pan Gesture (Bottom-Left Corner) for precise wheel steering
   const joystickGesture = Gesture.Pan()
     .runOnJS(true)
-    .onBegin(() => {
-      joystickStartRef.current = { ...joystickKnob };
-    })
-    .onUpdate((e) => {
-      const rawX = joystickStartRef.current.x + e.translationX;
-      const rawY = joystickStartRef.current.y + e.translationY;
-      const dist = Math.hypot(rawX, rawY);
-      const scale = dist > JOYSTICK_RADIUS ? JOYSTICK_RADIUS / dist : 1;
-      const clampedX = rawX * scale;
-      const clampedY = rawY * scale;
-
-      setJoystickKnob({ x: clampedX, y: clampedY });
-      const normalizedSteer = clampedX / JOYSTICK_RADIUS; // -1 to +1
-      physicsRef.current.steerRad = normalizedSteer * MAX_STEER_RAD;
+    .onChange((e) => {
+      setJoystickKnob((prev) => {
+        const rawX = prev.x + e.changeX;
+        const rawY = prev.y + e.changeY;
+        const dist = Math.hypot(rawX, rawY);
+        const scale = dist > JOYSTICK_RADIUS ? JOYSTICK_RADIUS / dist : 1;
+        return {
+          x: rawX * scale,
+          y: rawY * scale,
+        };
+      });
     })
     .onFinalize(() => {
       // Smoothly return steering wheel to center on release
       setJoystickKnob({ x: 0, y: 0 });
-      physicsRef.current.steerRad = 0;
     });
 
   const carAngleDeg = (carState.angleRad * 180) / Math.PI;

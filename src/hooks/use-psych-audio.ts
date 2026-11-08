@@ -1,4 +1,4 @@
-import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
+import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect } from 'react';
 import { Platform } from 'react-native';
@@ -10,24 +10,52 @@ const rightSignalAsset = require('../../assets/sounds/right_signal.wav');
 const successAsset = require('../../assets/sounds/success.wav');
 const errorAsset = require('../../assets/sounds/error.wav');
 
+type SoundKey = 'left' | 'right' | 'success' | 'error';
+
+const sharedPlayers: Partial<Record<SoundKey, AudioPlayer>> = {};
+let audioModeInitialized = false;
+
+function getOrCreatePlayer(key: SoundKey): AudioPlayer | null {
+  if (Platform.OS === 'web' && typeof window === 'undefined') {
+    return null;
+  }
+  if (sharedPlayers[key]) {
+    return sharedPlayers[key] ?? null;
+  }
+  try {
+    const source =
+      key === 'left'
+        ? leftSignalAsset
+        : key === 'right'
+          ? rightSignalAsset
+          : key === 'success'
+            ? successAsset
+            : errorAsset;
+    const player = createAudioPlayer(source);
+    sharedPlayers[key] = player;
+    return player;
+  } catch {
+    return null;
+  }
+}
+
 export function usePsychAudio() {
   const { setMeasuredAudioLatencyMs } = useEvaluation();
 
-  const leftPlayer = useAudioPlayer(leftSignalAsset);
-  const rightPlayer = useAudioPlayer(rightSignalAsset);
-  const successPlayer = useAudioPlayer(successAsset);
-  const errorPlayer = useAudioPlayer(errorAsset);
-
   useEffect(() => {
-    setAudioModeAsync({
-      playsInSilentMode: true,
-      shouldPlayInBackground: false,
-    }).catch(() => {
-      // Ignore if platform does not support specific audio mode flags
-    });
+    if (Platform.OS === 'web' && typeof window === 'undefined') return;
+    if (!audioModeInitialized) {
+      audioModeInitialized = true;
+      setAudioModeAsync({
+        playsInSilentMode: true,
+        shouldPlayInBackground: false,
+      }).catch(() => {
+        // Ignore if platform does not support specific audio mode flags
+      });
+    }
   }, []);
 
-  const triggerHaptic = useCallback((type: 'left' | 'right' | 'success' | 'error') => {
+  const triggerHaptic = useCallback((type: SoundKey) => {
     if (Platform.OS === 'web') return;
     try {
       if (type === 'left') {
@@ -44,51 +72,34 @@ export function usePsychAudio() {
     }
   }, []);
 
-  const playLeftSignal = useCallback(async () => {
-    const t0 = performance.now();
-    try {
-      await leftPlayer.seekTo(0);
-      leftPlayer.play();
-    } catch {
-      // Fallback
-    }
-    const elapsed = Math.max(4.8, Math.min(28.0, Number((performance.now() - t0 + 8.5).toFixed(1))));
-    setMeasuredAudioLatencyMs(elapsed);
-    triggerHaptic('left');
-  }, [leftPlayer, setMeasuredAudioLatencyMs, triggerHaptic]);
+  const playSoundKey = useCallback(
+    async (key: SoundKey) => {
+      const t0 = performance.now();
+      try {
+        const player = getOrCreatePlayer(key);
+        if (player) {
+          await player.seekTo(0);
+          player.play();
+        }
+      } catch {
+        // Fallback if audio device is busy
+      }
+      if (key === 'left' || key === 'right') {
+        const elapsed = Math.max(
+          4.8,
+          Math.min(28.0, Number((performance.now() - t0 + 8.5).toFixed(1)))
+        );
+        setMeasuredAudioLatencyMs(elapsed);
+      }
+      triggerHaptic(key);
+    },
+    [setMeasuredAudioLatencyMs, triggerHaptic]
+  );
 
-  const playRightSignal = useCallback(async () => {
-    const t0 = performance.now();
-    try {
-      await rightPlayer.seekTo(0);
-      rightPlayer.play();
-    } catch {
-      // Fallback
-    }
-    const elapsed = Math.max(4.8, Math.min(28.0, Number((performance.now() - t0 + 8.5).toFixed(1))));
-    setMeasuredAudioLatencyMs(elapsed);
-    triggerHaptic('right');
-  }, [rightPlayer, setMeasuredAudioLatencyMs, triggerHaptic]);
-
-  const playSuccess = useCallback(async () => {
-    try {
-      await successPlayer.seekTo(0);
-      successPlayer.play();
-    } catch {
-      // Fallback
-    }
-    triggerHaptic('success');
-  }, [successPlayer, triggerHaptic]);
-
-  const playError = useCallback(async () => {
-    try {
-      await errorPlayer.seekTo(0);
-      errorPlayer.play();
-    } catch {
-      // Fallback
-    }
-    triggerHaptic('error');
-  }, [errorPlayer, triggerHaptic]);
+  const playLeftSignal = useCallback(() => playSoundKey('left'), [playSoundKey]);
+  const playRightSignal = useCallback(() => playSoundKey('right'), [playSoundKey]);
+  const playSuccess = useCallback(() => playSoundKey('success'), [playSoundKey]);
+  const playError = useCallback(() => playSoundKey('error'), [playSoundKey]);
 
   return {
     playLeftSignal,
@@ -97,4 +108,3 @@ export function usePsychAudio() {
     playError,
   };
 }
-

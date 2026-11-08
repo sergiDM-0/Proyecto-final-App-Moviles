@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -210,12 +210,10 @@ export default function DashboardScreen() {
                   ? `Último registro: Izq ${reactionResult.leftAvgMs}ms | Der ${reactionResult.rightAvgMs}ms (${reactionResult.accuracyPct}% acierto)`
                   : 'Toque para abrir el banco de reflejos acústico-visual'}
               </Text>
-              <Link href="/reaction" asChild>
-                <Pressable style={[styles.launchButton, { backgroundColor: PsychoPalette.cyan }]}>
-                  <Text style={styles.launchButtonText}>INICIAR PRUEBA</Text>
-                  <Ionicons name="arrow-forward" size={15} color={PsychoPalette.bgPrimary} />
-                </Pressable>
-              </Link>
+              <View style={[styles.launchButton, { backgroundColor: PsychoPalette.cyan }]}>
+                <Text style={styles.launchButtonText}>INICIAR PRUEBA</Text>
+                <Ionicons name="arrow-forward" size={15} color={PsychoPalette.bgPrimary} />
+              </View>
             </View>
           </Pressable>
 
@@ -300,12 +298,10 @@ export default function DashboardScreen() {
                   ? `Último registro: Izq ${latheResult.leftPrecisionPct}% | Der ${latheResult.rightPrecisionPct}% (Fuera: ${latheResult.offTrackSeconds}s)`
                   : 'Toque para iniciar el test visomotriz de doble trazado'}
               </Text>
-              <Link href="/lathe" asChild>
-                <Pressable style={[styles.launchButton, { backgroundColor: PsychoPalette.mint }]}>
-                  <Text style={styles.launchButtonText}>INICIAR PRUEBA</Text>
-                  <Ionicons name="arrow-forward" size={15} color={PsychoPalette.bgPrimary} />
-                </Pressable>
-              </Link>
+              <View style={[styles.launchButton, { backgroundColor: PsychoPalette.mint }]}>
+                <Text style={styles.launchButtonText}>INICIAR PRUEBA</Text>
+                <Ionicons name="arrow-forward" size={15} color={PsychoPalette.bgPrimary} />
+              </View>
             </View>
           </Pressable>
 
@@ -393,12 +389,10 @@ export default function DashboardScreen() {
                   ? `Último registro: ${maneuverResult.scenarioTitle} en ${maneuverResult.elapsedSeconds}s (${maneuverResult.collisions} colisiones)`
                   : 'Toque para abrir la pista de maniobras y estacionamiento 2D'}
               </Text>
-              <Link href="/maneuvers" asChild>
-                <Pressable style={[styles.launchButton, { backgroundColor: PsychoPalette.cyan }]}>
-                  <Text style={styles.launchButtonText}>INICIAR SIMULADOR</Text>
-                  <Ionicons name="arrow-forward" size={15} color={PsychoPalette.bgPrimary} />
-                </Pressable>
-              </Link>
+              <View style={[styles.launchButton, { backgroundColor: PsychoPalette.cyan }]}>
+                <Text style={styles.launchButtonText}>INICIAR SIMULADOR</Text>
+                <Ionicons name="arrow-forward" size={15} color={PsychoPalette.bgPrimary} />
+              </View>
             </View>
           </Pressable>
         </View>

@@ -1,5 +1,3 @@
-import '@/global.css';
-
 import { Platform } from 'react-native';
 
 /**
@@ -90,10 +88,10 @@ export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
 export const Fonts = Platform.select({
   ios: {
-    sans: 'system-ui',
-    serif: 'ui-serif',
-    rounded: 'ui-rounded',
-    mono: 'ui-monospace',
+    sans: 'System',
+    serif: 'Georgia',
+    rounded: 'System',
+    mono: 'Menlo',
   },
   default: {
     sans: 'normal',
@@ -102,10 +100,10 @@ export const Fonts = Platform.select({
     mono: 'monospace',
   },
   web: {
-    sans: 'var(--font-display)',
-    serif: 'var(--font-serif)',
-    rounded: 'var(--font-rounded)',
-    mono: 'var(--font-mono)',
+    sans: 'system-ui, -apple-system, sans-serif',
+    serif: 'Georgia, serif',
+    rounded: 'system-ui, sans-serif',
+    mono: 'monospace',
   },
 });
 

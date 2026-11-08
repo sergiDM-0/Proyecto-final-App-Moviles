@@ -97,12 +97,18 @@ export default function LatheBimanualScreen() {
   const [offTrackSeconds, setOffTrackSeconds] = useState<number>(0);
   const [finalGrade, setFinalGrade] = useState<AptitudeGrade | null>(null);
 
-  // Refs for 60fps loop and gesture state
+  // Refs for 60fps loop
   const scrollRef = useRef<number>(0);
   const leftPosRef = useRef<{ x: number; y: number }>({ x: 90, y: 280 });
   const rightPosRef = useRef<{ x: number; y: number }>({ x: 270, y: 280 });
-  const leftDragStartRef = useRef<{ x: number; y: number }>({ x: 90, y: 280 });
-  const rightDragStartRef = useRef<{ x: number; y: number }>({ x: 270, y: 280 });
+
+  useEffect(() => {
+    leftPosRef.current = leftCircle;
+  }, [leftCircle]);
+
+  useEffect(() => {
+    rightPosRef.current = rightCircle;
+  }, [rightCircle]);
 
   const statsRef = useRef({
     totalFrames: 0,
@@ -274,38 +280,20 @@ export default function LatheBimanualScreen() {
 
   const leftPanGesture = Gesture.Pan()
     .runOnJS(true)
-    .onBegin(() => {
-      leftDragStartRef.current = { ...leftPosRef.current };
-    })
-    .onUpdate((e) => {
-      const nextX = Math.max(
-        22,
-        Math.min(halfCanvasWidth - 22, leftDragStartRef.current.x + e.translationX)
-      );
-      const nextY = Math.max(
-        60,
-        Math.min(canvasSize.height - 45, leftDragStartRef.current.y + e.translationY)
-      );
-      leftPosRef.current = { x: nextX, y: nextY };
-      setLeftCircle({ x: nextX, y: nextY });
+    .onChange((e) => {
+      setLeftCircle((prev) => ({
+        x: Math.max(22, Math.min(halfCanvasWidth - 22, prev.x + e.changeX)),
+        y: Math.max(60, Math.min(canvasSize.height - 45, prev.y + e.changeY)),
+      }));
     });
 
   const rightPanGesture = Gesture.Pan()
     .runOnJS(true)
-    .onBegin(() => {
-      rightDragStartRef.current = { ...rightPosRef.current };
-    })
-    .onUpdate((e) => {
-      const nextX = Math.max(
-        halfCanvasWidth + 22,
-        Math.min(canvasSize.width - 22, rightDragStartRef.current.x + e.translationX)
-      );
-      const nextY = Math.max(
-        60,
-        Math.min(canvasSize.height - 45, rightDragStartRef.current.y + e.translationY)
-      );
-      rightPosRef.current = { x: nextX, y: nextY };
-      setRightCircle({ x: nextX, y: nextY });
+    .onChange((e) => {
+      setRightCircle((prev) => ({
+        x: Math.max(halfCanvasWidth + 22, Math.min(canvasSize.width - 22, prev.x + e.changeX)),
+        y: Math.max(60, Math.min(canvasSize.height - 45, prev.y + e.changeY)),
+      }));
     });
 
   // Build SVG wave paths for Left and Right lanes

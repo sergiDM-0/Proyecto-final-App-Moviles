@@ -1,56 +1,52 @@
-# Welcome to your Expo app 👋
+# AutoTest Psicotécnico 2D — Simulador de Evaluación y Práctica de Conductores
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Aplicación móvil interactiva en **2D** desarrollada con **React Native y Expo (SDK 58)** orientada a la evaluación psicotécnica y entrenamiento práctico previo a la obtención o renovación de licencias de conducción.
 
-## Get started
+Diseñada bajo una estética de **Tablero de Control Profesional (AutoTest Psicotécnico)** con paleta oscura (azul marino profundo `#050A14` / `#0A1222` / `#0F1A2E`) y acentos de instrumentación en **verde menta (`#00F5A0`)** y **cian (`#00D9F5`)**.
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
-dd
-2. Start the app
+## Pila Tecnológica (Stack)
 
-   ```bash
-   npx expo start
-   ```
+| Tecnología / Librería | Función Principal | Implementación en el Proyecto |
+| :--- | :--- | :--- |
+| **React Native + Expo (SDK 58)** | Framework Base | Ejecución multiplataforma fluida en Android, iOS y Web con motor Hermes y React Compiler. |
+| **Expo Router** | Enrutamiento y Navegación | Navegación basada en archivos dentro de `src/app/` (`index`, `reaction`, `lathe`, `maneuvers`). |
+| **expo-audio** *(sucesor oficial de `expo-av` en SDK 58)* + **expo-haptics** | Audio y Señales Acústicas | Reproducción de impulsos sonoros discriminados por mano (`440 Hz` Mano Izquierda, `880 Hz` Mano Derecha) con archivos PCM `.wav` generados en `assets/sounds/`. |
+| **react-native-gesture-handler** | Control de Gestos Multitáctil | Manejo sin latencia de los dos anillos simultáneos del Torno Bimanual y del Joystick de dirección del vehículo 2D. |
+| **react-native-svg** | Renderizado Vectorial 2D | Trazado en tiempo real a 60 FPS de los carriles ondulados bimanuales y del circuito top-down con vehículo direccional. |
 
-In the output, you'll find options to open the app in a
+---
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Estructura de Pantallas y Módulos (`src/app/`)
 
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+1. **Pantalla 1: Menú Principal / Dashboard (`src/app/index.tsx`)**
+   - Telemetría superior en tiempo real con **Latencia de Audio (`ms`)** y **Frecuencia de Cuadros (`FPS`)**.
+   - Tres tarjetas visuales de gran tamaño con acceso directo a cada prueba y estado de calificación de la sesión.
+   - Panel inferior con el **Resumen de Baremos Oficiales Psicotécnicos** (`EXCELENTE`, `APTO OFICIAL`, `NO APTO`).
+2. **Pantalla 2: Prueba de Reacción y Audio (`src/app/reaction.tsx`)**
+   - Interfaz de **Pantalla Dividida** con dos rectángulos táctiles de gran tamaño (**Rojo** para Mano Izquierda y **Verde** para Mano Derecha).
+   - **Alertas discriminadas por mano** mediante tonos de `440 Hz` (canal izquierdo) y `880 Hz` (canal derecho), medición en milisegundos, detección de salidas en falso y modos `AUDIO + VISUAL`, `SOLO AUDIO` y `SOLO VISUAL`.
+3. **Pantalla 3: Prueba del Torno — Coordinación Bimanual (`src/app/lathe.tsx`)**
+   - **Dos carriles verticales ondulados** asimétricos en desplazamiento continuo.
+   - **Dos círculos arrastrables simultáneos** mediante `Gesture.Pan()` independiente por hemisferio.
+   - Panel en tiempo real de **Precisión (`%`)**, **Velocidad (`px/s`)** y tiempo fuera de pista.
+4. **Pantalla 4: Simulador de Maniobras 2D — Vista Superior (`src/app/maneuvers.tsx`)**
+   - **Vista de Pájaro (Top-Down)** de un circuito vial con **vehículo azul** (modelo cinemático con ruedas delanteras que giran según el ángulo de dirección) y **zona de parqueo claramente demarcada** (`P`).
+   - **Joystick de Control** en la esquina inferior izquierda para controlar el ángulo de giro de las ruedas (`-38°` a `+38°`).
+   - **Pedales de Control** en la esquina inferior derecha (**Freno / Reversa** y **Acelerador**) junto con selector de marcha (`D / R`).
 
-## Get a fresh project
+---
 
-When you're ready, run:
+## Ejecución del Proyecto
 
 ```bash
-npm run reset-project
+# Iniciar el servidor de desarrollo de Expo
+npx expo start
+
+# Verificar tipos de TypeScript
+npx tsc --noEmit
+
+# Ejecutar el linter oficial de Expo
+npx expo lint
 ```
-
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
-
-### Other setup steps
-
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.

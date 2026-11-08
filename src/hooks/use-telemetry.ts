@@ -16,7 +16,7 @@ export function useTelemetry(): TelemetryData {
   const [jitterMs, setJitterMs] = useState<number>(0);
 
   const frameCountRef = useRef(0);
-  const lastSampleTimeRef = useRef(performance.now());
+  const lastSampleTimeRef = useRef(0);
   const rafIdRef = useRef<number | null>(null);
 
   useEffect(() => {
