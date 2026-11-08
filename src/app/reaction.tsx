@@ -28,11 +28,14 @@ export default function ReactionAudioScreen() {
   const { playLeftSignal, playRightSignal, playSuccess, playError } = usePsychAudio();
 
   const [stimulusMode, setStimulusMode] = useState<StimulusMode>('BOTH');
+  const [headphonesConfirmed, setHeadphonesConfirmed] = useState<boolean>(false);
+  const [testedLeftEar, setTestedLeftEar] = useState<boolean>(false);
+  const [testedRightEar, setTestedRightEar] = useState<boolean>(false);
   const [phase, setPhase] = useState<TestPhase>('IDLE');
   const [currentRound, setCurrentRound] = useState<number>(0);
   const [activeHand, setActiveHand] = useState<TargetHand | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string>(
-    'Presione "INICIAR EVALUACIÓN" y coloque sus pulgares sobre los rectángulos Rojo (Izquierda) y Verde (Derecha).'
+    'Colóquese sus audífonos, presione "INICIAR PRUEBA" y coloque sus pulgares sobre los rectángulos Rojo (Izquierda) y Verde (Derecha).'
   );
   const [feedbackType, setFeedbackType] = useState<'NEUTRAL' | 'GOOD' | 'BAD'>('NEUTRAL');
   const [trials, setTrials] = useState<TrialRecord[]>([]);
@@ -311,14 +314,39 @@ export default function ReactionAudioScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
       <TelemetryHeader
-        title="PRUEBA DE REACCIÓN Y AUDIO"
-        subtitle="Evaluación de Reflejos Discriminados por Mano (Izquierda / Derecha)"
+        title="PRUEBA DE REACCIÓN Y AUDIO (CON AUDÍFONOS)"
+        subtitle="Colóquese audífonos para una prueba binaural realista (Izquierda / Derecha)"
         moduleCode="MOD-01"
         showBack
         onTestAudio={playRightSignal}
       />
 
       <View style={styles.mainContainer}>
+        {/* AVISO DE SOLICITUD DE AUDÍFONOS EN LA BARRA SUPERIOR */}
+        <View style={styles.headphonesNoticeBar}>
+          <View style={styles.headphonesNoticeLeft}>
+            <View style={styles.headphoneIconBadge}>
+              <Ionicons name="headset" size={16} color={PsychoPalette.cyan} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.headphonesNoticeTitle}>
+                SE SOLICITA EL USO DE AUDÍFONOS PARA UNA PRUEBA MÁS REALISTA
+              </Text>
+              <Text style={styles.headphonesNoticeSub}>
+                {headphonesConfirmed
+                  ? 'Audífonos confirmados • Canal Izquierdo (440 Hz) y Canal Derecho (880 Hz) activos'
+                  : 'Verifique sus canales L / R antes de comenzar la evaluación auditivo-motora'}
+              </Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={() => setHeadphonesConfirmed(false)}
+            style={styles.recheckHeadphonesBtn}>
+            <Ionicons name="ear-outline" size={13} color={PsychoPalette.mint} />
+            <Text style={styles.recheckHeadphonesText}>CALIBRAR AUDÍFONOS</Text>
+          </Pressable>
+        </View>
+
         {/* BARRA SUPERIOR DE MÉTRICAS Y MODO DE ESTÍMULO */}
         <View style={styles.topControlCard}>
           <View style={styles.metricsRow}>
@@ -615,6 +643,93 @@ export default function ReactionAudioScreen() {
             </Pressable>
           ) : null}
         </View>
+
+        {/* MODAL INTERACTIVO DE SOLICITUD DE AUDÍFONOS ANTES DE INICIAR LA PRUEBA DE SONIDO */}
+        {!headphonesConfirmed ? (
+          <View style={styles.headphonesOverlay}>
+            <View style={styles.headphonesModalCard}>
+              <View style={styles.headphonesTopBadge}>
+                <Ionicons name="headset" size={28} color={PsychoPalette.cyan} />
+              </View>
+              <Text style={styles.headphonesModalTag}>REQUISITO DE PRUEBA DE SONIDO</Text>
+              <Text style={styles.headphonesModalTitle}>
+                COLÓQUESE UNOS AUDÍFONOS PARA UNA PRUEBA MÁS REALISTA
+              </Text>
+              <Text style={styles.headphonesModalDesc}>
+                Para evaluar con fidelidad clínica su discriminación auditiva y reflejos por cada
+                oído, por favor conecte o colóquese sus audífonos. Pruebe ambos canales antes de
+                comenzar:
+              </Text>
+
+              <View style={styles.earTestButtonsRow}>
+                <Pressable
+                  onPress={() => {
+                    playLeftSignal();
+                    setTestedLeftEar(true);
+                  }}
+                  style={[
+                    styles.earTestCard,
+                    styles.earTestCardLeft,
+                    testedLeftEar && styles.earTestCardVerified,
+                  ]}>
+                  <Ionicons name="volume-medium" size={22} color="#FFFFFF" />
+                  <Text style={styles.earTestCardTitle}>OÍDO IZQUIERDO (L)</Text>
+                  <Text style={styles.earTestCardSub}>Tono Grave • 440 Hz</Text>
+                  <View style={styles.earTestStatusPill}>
+                    <Ionicons
+                      name={testedLeftEar ? 'checkmark-circle' : 'play-circle'}
+                      size={13}
+                      color={testedLeftEar ? PsychoPalette.mint : '#FFFFFF'}
+                    />
+                    <Text style={styles.earTestStatusText}>
+                      {testedLeftEar ? 'PROBADO' : 'TOCAR PARA OÍR'}
+                    </Text>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => {
+                    playRightSignal();
+                    setTestedRightEar(true);
+                  }}
+                  style={[
+                    styles.earTestCard,
+                    styles.earTestCardRight,
+                    testedRightEar && styles.earTestCardVerified,
+                  ]}>
+                  <Ionicons name="volume-high" size={22} color="#FFFFFF" />
+                  <Text style={styles.earTestCardTitle}>OÍDO DERECHO (R)</Text>
+                  <Text style={styles.earTestCardSub}>Tono Agudo • 880 Hz</Text>
+                  <View style={styles.earTestStatusPill}>
+                    <Ionicons
+                      name={testedRightEar ? 'checkmark-circle' : 'play-circle'}
+                      size={13}
+                      color={testedRightEar ? PsychoPalette.mint : '#FFFFFF'}
+                    />
+                    <Text style={styles.earTestStatusText}>
+                      {testedRightEar ? 'PROBADO' : 'TOCAR PARA OÍR'}
+                    </Text>
+                  </View>
+                </Pressable>
+              </View>
+
+              <Pressable
+                onPress={() => {
+                  playSuccess();
+                  setHeadphonesConfirmed(true);
+                }}
+                style={({ pressed }) => [
+                  styles.confirmHeadphonesBtn,
+                  pressed && { opacity: 0.88 },
+                ]}>
+                <Ionicons name="headset" size={18} color={PsychoPalette.bgPrimary} />
+                <Text style={styles.confirmHeadphonesBtnText}>
+                  TENGO MIS AUDÍFONOS PUESTOS • ENTRAR A LA PRUEBA
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -1026,6 +1141,186 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '900',
     fontFamily: Fonts.mono,
+  },
+  headphonesNoticeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+    backgroundColor: 'rgba(0, 217, 245, 0.1)',
+    borderWidth: 1,
+    borderColor: PsychoPalette.cyan,
+    borderRadius: 11,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  headphonesNoticeLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    minWidth: 200,
+  },
+  headphoneIconBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: PsychoPalette.bgPanel,
+    borderWidth: 1,
+    borderColor: PsychoPalette.cyan,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headphonesNoticeTitle: {
+    color: PsychoPalette.cyan,
+    fontSize: 10,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+    letterSpacing: 0.4,
+  },
+  headphonesNoticeSub: {
+    color: PsychoPalette.textPrimary,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  recheckHeadphonesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: PsychoPalette.bgPanel,
+    borderWidth: 1,
+    borderColor: PsychoPalette.mint,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 7,
+  },
+  recheckHeadphonesText: {
+    color: PsychoPalette.mint,
+    fontSize: 9,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  headphonesOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(5, 10, 20, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    zIndex: 30,
+  },
+  headphonesModalCard: {
+    backgroundColor: PsychoPalette.bgCard,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: PsychoPalette.cyan,
+    padding: 20,
+    maxWidth: 480,
+    width: '100%',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headphonesTopBadge: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: PsychoPalette.cyanDim,
+    borderWidth: 1.5,
+    borderColor: PsychoPalette.cyan,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headphonesModalTag: {
+    color: PsychoPalette.mint,
+    fontSize: 10,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+    letterSpacing: 0.8,
+  },
+  headphonesModalTitle: {
+    color: PsychoPalette.textPrimary,
+    fontSize: 17,
+    fontWeight: '900',
+    textAlign: 'center',
+    lineHeight: 23,
+  },
+  headphonesModalDesc: {
+    color: PsychoPalette.textSecondary,
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  earTestButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+    marginTop: 2,
+  },
+  earTestCard: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1.5,
+  },
+  earTestCardLeft: {
+    backgroundColor: '#7F1D1D',
+    borderColor: PsychoPalette.redSignalBright,
+  },
+  earTestCardRight: {
+    backgroundColor: '#064E3B',
+    borderColor: PsychoPalette.mint,
+  },
+  earTestCardVerified: {
+    borderColor: '#FFFFFF',
+  },
+  earTestCardTitle: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+    textAlign: 'center',
+  },
+  earTestCardSub: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 10,
+    fontFamily: Fonts.mono,
+  },
+  earTestStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginTop: 3,
+  },
+  earTestStatusText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+    fontFamily: Fonts.mono,
+  },
+  confirmHeadphonesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: PsychoPalette.mint,
+    width: '100%',
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    borderRadius: 11,
+    marginTop: 4,
+  },
+  confirmHeadphonesBtnText: {
+    color: PsychoPalette.bgPrimary,
+    fontSize: 11,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+    letterSpacing: 0.4,
   },
 });
 

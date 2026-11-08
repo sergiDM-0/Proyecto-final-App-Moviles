@@ -81,20 +81,34 @@ export default function DashboardScreen() {
               </Text>
             </View>
 
-            <View style={styles.heroImageContainer}>
+            <Pressable
+              onPress={() => {
+                playSuccess();
+                setHasStartedApp(true);
+              }}
+              style={({ pressed }) => [
+                styles.heroImageContainer,
+                pressed && { opacity: 0.92, transform: [{ scale: 0.995 }] },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Toque la imagen para iniciar y pasar a las pruebas">
               <Image
                 source={welcomeHeroImage}
                 style={styles.heroImage}
                 contentFit="cover"
                 transition={250}
               />
+              <View style={styles.heroCenterStartPill}>
+                <Ionicons name="play" size={18} color={PsychoPalette.bgPrimary} />
+                <Text style={styles.heroCenterStartText}>TOQUE PARA INICIAR</Text>
+              </View>
               <View style={styles.heroOverlayBadge}>
                 <Ionicons name="car-sport" size={16} color={PsychoPalette.mint} />
                 <Text style={styles.heroOverlayText}>
                   CABINA 3D INTERACTIVA + EVALUACIÓN PSICOTÉCNICA OFICIAL
                 </Text>
               </View>
-            </View>
+            </Pressable>
 
             <View style={styles.welcomeTextSection}>
               <Text style={styles.welcomeTitle}>
@@ -738,6 +752,27 @@ const styles = StyleSheet.create({
   heroImage: {
     width: '100%',
     height: '100%',
+  },
+  heroCenterStartPill: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: PsychoPalette.mint,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  heroCenterStartText: {
+    color: PsychoPalette.bgPrimary,
+    fontSize: 11,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+    letterSpacing: 0.6,
   },
   heroOverlayBadge: {
     position: 'absolute',
