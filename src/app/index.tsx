@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -9,6 +10,8 @@ import { Fonts, OFFICIAL_BENCHMARKS, PsychoPalette } from '@/constants/theme';
 import { AptitudeGrade, useEvaluation } from '@/context/evaluation-context';
 import { usePsychAudio } from '@/hooks/use-psych-audio';
 import { useTelemetry } from '@/hooks/use-telemetry';
+
+const welcomeHeroImage = require('../../assets/images/welcome-hero.jpg');
 
 function getGradeBadgeStyle(grade: AptitudeGrade) {
   switch (grade) {
@@ -41,16 +44,131 @@ function getGradeBadgeStyle(grade: AptitudeGrade) {
 
 export default function DashboardScreen() {
   const { fps, frameTimeMs, audioLatencyMs, systemStatus } = useTelemetry();
-  const { reactionResult, latheResult, maneuverResult, resetAllEvaluations } = useEvaluation();
-  const { playLeftSignal, playRightSignal } = usePsychAudio();
+  const {
+    hasStartedApp,
+    setHasStartedApp,
+    preoperationalResult,
+    reactionResult,
+    latheResult,
+    maneuverResult,
+    resetAllEvaluations,
+  } = useEvaluation();
+  const { playLeftSignal, playRightSignal, playSuccess } = usePsychAudio();
 
-  const completedCount = [reactionResult, latheResult, maneuverResult].filter(Boolean).length;
+  const completedCount = [
+    preoperationalResult,
+    reactionResult,
+    latheResult,
+    maneuverResult,
+  ].filter(Boolean).length;
+
+  // PANTALLA DE BIENVENIDA CON IMAGEN ANTES DE ENTRAR A LAS PRUEBAS
+  if (!hasStartedApp) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.welcomeScrollContent}
+          showsVerticalScrollIndicator={false}>
+          <View style={styles.welcomeCard}>
+            <View style={styles.welcomeTopBadgeRow}>
+              <View style={styles.welcomeLivePill}>
+                <View style={styles.welcomeDot} />
+                <Text style={styles.welcomeLiveText}>SISTEMA CRC • SIMULADOR VIAL 3D</Text>
+              </View>
+              <Text style={styles.welcomeTelemetryTag}>
+                {fps} FPS • AUDIO {audioLatencyMs} ms
+              </Text>
+            </View>
+
+            <View style={styles.heroImageContainer}>
+              <Image
+                source={welcomeHeroImage}
+                style={styles.heroImage}
+                contentFit="cover"
+                transition={250}
+              />
+              <View style={styles.heroOverlayBadge}>
+                <Ionicons name="car-sport" size={16} color={PsychoPalette.mint} />
+                <Text style={styles.heroOverlayText}>
+                  CABINA 3D INTERACTIVA + EVALUACIÓN PSICOTÉCNICA OFICIAL
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.welcomeTextSection}>
+              <Text style={styles.welcomeTitle}>
+                AUTOTEST PSICOTÉCNICO Y SIMULADOR DE CONDUCCIÓN 3D
+              </Text>
+              <Text style={styles.welcomeDescription}>
+                Plataforma integral de evaluación para aspirantes y conductores. Incluye inspección
+                preoperacional del vehículo, prueba auditiva con audífonos, torno bimanual de
+                velocidad adaptativa y simulador 3D en carretera con cabina completa y espejos.
+              </Text>
+            </View>
+
+            <View style={styles.welcomeFeaturesGrid}>
+              <View style={styles.welcomeFeatureItem}>
+                <Ionicons name="construct-outline" size={18} color={PsychoPalette.amberWarning} />
+                <View style={styles.welcomeFeatureTextCol}>
+                  <Text style={styles.welcomeFeatureTitle}>Nivel Preoperacional</Text>
+                  <Text style={styles.welcomeFeatureSub}>Revisión de motor, PSI, luces y kit</Text>
+                </View>
+              </View>
+
+              <View style={styles.welcomeFeatureItem}>
+                <Ionicons name="headset-outline" size={18} color={PsychoPalette.cyan} />
+                <View style={styles.welcomeFeatureTextCol}>
+                  <Text style={styles.welcomeFeatureTitle}>Audio con Audífonos</Text>
+                  <Text style={styles.welcomeFeatureSub}>Estímulos L/R de alta precisión</Text>
+                </View>
+              </View>
+
+              <View style={styles.welcomeFeatureItem}>
+                <Ionicons name="speedometer-outline" size={18} color={PsychoPalette.mint} />
+                <View style={styles.welcomeFeatureTextCol}>
+                  <Text style={styles.welcomeFeatureTitle}>Torno Adaptativo</Text>
+                  <Text style={styles.welcomeFeatureSub}>Velocidad dinámica por desempeño</Text>
+                </View>
+              </View>
+
+              <View style={styles.welcomeFeatureItem}>
+                <Ionicons name="car-sport-outline" size={18} color={PsychoPalette.vehicleBlueLight} />
+                <View style={styles.welcomeFeatureTextCol}>
+                  <Text style={styles.welcomeFeatureTitle}>Simulador 3D + Cabina</Text>
+                  <Text style={styles.welcomeFeatureSub}>Espejos, mandos y 3 niveles en 3D</Text>
+                </View>
+              </View>
+            </View>
+
+            <Pressable
+              onPress={() => {
+                playSuccess();
+                setHasStartedApp(true);
+              }}
+              style={({ pressed }) => [
+                styles.welcomeStartButton,
+                pressed && { opacity: 0.88, transform: [{ scale: 0.99 }] },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Iniciar y pasar a las pruebas">
+              <Ionicons name="play-circle" size={24} color={PsychoPalette.bgPrimary} />
+              <Text style={styles.welcomeStartButtonText}>
+                INICIAR Y PASAR A LAS PRUEBAS
+              </Text>
+              <Ionicons name="arrow-forward" size={20} color={PsychoPalette.bgPrimary} />
+            </Pressable>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <TelemetryHeader
-        title="AUTOTEST PSICOTÉCNICO 2D"
-        subtitle="Consola de Evaluación y Entrenamiento de Conductores"
+        title="AUTOTEST PSICOTÉCNICO & 3D"
+        subtitle="Consola de Evaluación Psicofísica, Preoperacional y Maniobras 3D"
         moduleCode="CRC-PRO"
         onTestAudio={playRightSignal}
       />
@@ -68,15 +186,23 @@ export default function DashboardScreen() {
                 DIAGNÓSTICO DE HARDWARE Y TELEMETRÍA EN TIEMPO REAL
               </Text>
             </View>
-            <Pressable
-              onPress={() => {
-                playLeftSignal();
-                setTimeout(() => playRightSignal(), 220);
-              }}
-              style={({ pressed }) => [styles.calibrateBtn, pressed && { opacity: 0.75 }]}>
-              <Ionicons name="volume-high-outline" size={14} color={PsychoPalette.cyan} />
-              <Text style={styles.calibrateBtnText}>TEST AUDIO L/R</Text>
-            </Pressable>
+            <View style={styles.bannerRightBtns}>
+              <Pressable
+                onPress={() => setHasStartedApp(false)}
+                style={({ pressed }) => [styles.coverBtn, pressed && { opacity: 0.75 }]}>
+                <Ionicons name="image-outline" size={13} color={PsychoPalette.textSecondary} />
+                <Text style={styles.coverBtnText}>PORTADA</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  playLeftSignal();
+                  setTimeout(() => playRightSignal(), 220);
+                }}
+                style={({ pressed }) => [styles.calibrateBtn, pressed && { opacity: 0.75 }]}>
+                <Ionicons name="headset-outline" size={14} color={PsychoPalette.cyan} />
+                <Text style={styles.calibrateBtnText}>TEST AUDIO L/R</Text>
+              </Pressable>
+            </View>
           </View>
 
           <View style={styles.telemetryGrid}>
@@ -88,11 +214,11 @@ export default function DashboardScreen() {
                 </Text>
                 <Text style={styles.telemetryUnit}>ms</Text>
               </View>
-              <Text style={styles.telemetryHint}>Motor expo-audio • Buffer PCM</Text>
+              <Text style={styles.telemetryHint}>Motor expo-audio • Binaural</Text>
             </View>
 
             <View style={styles.telemetryBox}>
-              <Text style={styles.telemetryBoxLabel}>FRECUENCIA DE CUADROS</Text>
+              <Text style={styles.telemetryBoxLabel}>MOTOR GRÁFICO 3D/2D</Text>
               <View style={styles.telemetryValueRow}>
                 <Text style={[styles.telemetryBigValue, { color: PsychoPalette.mint }]}>{fps}</Text>
                 <Text style={styles.telemetryUnit}>FPS</Text>
@@ -104,7 +230,7 @@ export default function DashboardScreen() {
               <Text style={styles.telemetryBoxLabel}>PROGRESO DE EXAMEN</Text>
               <View style={styles.telemetryValueRow}>
                 <Text style={[styles.telemetryBigValue, { color: PsychoPalette.textPrimary }]}>
-                  {completedCount}/3
+                  {completedCount}/4
                 </Text>
                 <Text style={styles.telemetryUnit}>MÓDULOS</Text>
               </View>
@@ -113,9 +239,9 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* SECCIÓN DE LAS 3 TARJETAS VISUALES DE GRAN TAMAÑO */}
+        {/* SECCIÓN DE LAS 4 TARJETAS VISUALES DE GRAN TAMAÑO */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionHeaderTitle}>MÓDULOS DE EVALUACIÓN OFICIAL</Text>
+          <Text style={styles.sectionHeaderTitle}>MÓDULOS DE EVALUACIÓN Y SIMULACIÓN</Text>
           {completedCount > 0 ? (
             <Pressable onPress={resetAllEvaluations} style={styles.resetButton}>
               <Ionicons name="refresh" size={13} color={PsychoPalette.textSecondary} />
@@ -125,7 +251,87 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.cardsColumn}>
-          {/* TARJETA 1: PRUEBA DE REACCIÓN Y AUDIO */}
+          {/* TARJETA NUEVA (NIVEL PREOPERACIONAL): INSPECCIÓN PREOPERACIONAL DEL VEHÍCULO */}
+          <Pressable
+            onPress={() => router.push('/preoperational')}
+            style={({ pressed }) => [
+              styles.moduleCard,
+              styles.moduleCardAmber,
+              pressed && styles.cardPressed,
+            ]}>
+            <View style={styles.cardTopBar}>
+              <View style={styles.moduleTagRow}>
+                <View style={[styles.moduleNumBadge, { backgroundColor: PsychoPalette.amberDim }]}>
+                  <Text style={[styles.moduleNumText, { color: PsychoPalette.amberWarning }]}>
+                    NIVEL PREOPERACIONAL
+                  </Text>
+                </View>
+                <Text style={styles.moduleTechTag}>INSPECCIÓN TÉCNICA 360° • CHECKLIST</Text>
+              </View>
+              {preoperationalResult ? (
+                <View
+                  style={[
+                    styles.gradePill,
+                    {
+                      backgroundColor: getGradeBadgeStyle(preoperationalResult.grade).bg,
+                      borderColor: getGradeBadgeStyle(preoperationalResult.grade).border,
+                    },
+                  ]}>
+                  <Text
+                    style={[
+                      styles.gradePillText,
+                      { color: getGradeBadgeStyle(preoperationalResult.grade).text },
+                    ]}>
+                    {preoperationalResult.grade} • {preoperationalResult.scorePct}%
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.pendingPill}>
+                  <Text style={styles.pendingPillText}>RECOMENDADO PRIMERO</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.cardBodyRow}>
+              <View style={[styles.iconPreviewBox, { borderColor: 'rgba(245, 158, 11, 0.45)' }]}>
+                <Ionicons name="construct" size={28} color={PsychoPalette.amberWarning} />
+                <Text style={styles.previewMiniTag}>PSI • MOTOR</Text>
+              </View>
+
+              <View style={styles.cardInfoColumn}>
+                <Text style={styles.cardTitle}>Inspección Preoperacional del Carro</Text>
+                <Text style={styles.cardDescription}>
+                  Verifique niveles de fluidos bajo el capó, calibración de llantas (PSI), sistema de
+                  luces, espejos, cabina y equipo de carretera antes de encender el vehículo.
+                </Text>
+
+                <View style={styles.cardSpecsRow}>
+                  <View style={styles.specChip}>
+                    <Ionicons name="checkmark-done" size={12} color={PsychoPalette.amberWarning} />
+                    <Text style={styles.specChipText}>15 Puntos + Corrección de Fallas</Text>
+                  </View>
+                  <View style={styles.specChip}>
+                    <Ionicons name="shield-checkmark-outline" size={12} color={PsychoPalette.mint} />
+                    <Text style={styles.specChipText}>Protocolo Vial PESV</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.cardFooter}>
+              <Text style={styles.cardActionHint}>
+                {preoperationalResult
+                  ? `Último registro: ${preoperationalResult.checkedCount}/${preoperationalResult.totalCount} puntos (${preoperationalResult.anomaliesFixed} fallas corregidas)`
+                  : 'Toque para realizar la inspección mecánica y de seguridad previa'}
+              </Text>
+              <View style={[styles.launchButton, { backgroundColor: PsychoPalette.amberWarning }]}>
+                <Text style={styles.launchButtonText}>ABRIR PREOPERACIONAL</Text>
+                <Ionicons name="arrow-forward" size={15} color={PsychoPalette.bgPrimary} />
+              </View>
+            </View>
+          </Pressable>
+
+          {/* TARJETA 1: PRUEBA DE REACCIÓN Y AUDIO (CON SOLICITUD DE AUDÍFONOS) */}
           <Pressable
             onPress={() => router.push('/reaction')}
             style={({ pressed }) => [
@@ -140,7 +346,7 @@ export default function DashboardScreen() {
                     MÓDULO 01
                   </Text>
                 </View>
-                <Text style={styles.moduleTechTag}>AUDIO BINAURAL • MULTITÁCTIL</Text>
+                <Text style={styles.moduleTechTag}>REQUIERE AUDÍFONOS • L/R BINAURAL</Text>
               </View>
               {reactionResult ? (
                 <View
@@ -177,7 +383,7 @@ export default function DashboardScreen() {
                   </View>
                 </View>
                 <Ionicons
-                  name="ear-outline"
+                  name="headset"
                   size={18}
                   color={PsychoPalette.cyan}
                   style={{ marginTop: 6 }}
@@ -185,20 +391,20 @@ export default function DashboardScreen() {
               </View>
 
               <View style={styles.cardInfoColumn}>
-                <Text style={styles.cardTitle}>Prueba de Reacción y Audio</Text>
+                <Text style={styles.cardTitle}>Prueba de Reacción y Audio (Con Audífonos)</Text>
                 <Text style={styles.cardDescription}>
-                  Evaluación de velocidad de respuesta ante estímulos sonoros y visuales
-                  discriminados por mano (Izquierda 440 Hz Roja / Derecha 880 Hz Verde).
+                  Solicita el uso de audífonos para discriminar estímulos auditivos por oído
+                  (Izquierda 440 Hz Roja / Derecha 880 Hz Verde) con respuesta inmediata.
                 </Text>
 
                 <View style={styles.cardSpecsRow}>
                   <View style={styles.specChip}>
-                    <Ionicons name="flash-outline" size={12} color={PsychoPalette.mint} />
-                    <Text style={styles.specChipText}>Baremo: &lt; 380 ms</Text>
+                    <Ionicons name="headset-outline" size={12} color={PsychoPalette.cyan} />
+                    <Text style={styles.specChipText}>Verificación de Audífonos</Text>
                   </View>
                   <View style={styles.specChip}>
-                    <Ionicons name="musical-notes-outline" size={12} color={PsychoPalette.cyan} />
-                    <Text style={styles.specChipText}>Alertas L / R</Text>
+                    <Ionicons name="flash-outline" size={12} color={PsychoPalette.mint} />
+                    <Text style={styles.specChipText}>Baremo: &lt; 380 ms</Text>
                   </View>
                 </View>
               </View>
@@ -208,7 +414,7 @@ export default function DashboardScreen() {
               <Text style={styles.cardActionHint}>
                 {reactionResult
                   ? `Último registro: Izq ${reactionResult.leftAvgMs}ms | Der ${reactionResult.rightAvgMs}ms (${reactionResult.accuracyPct}% acierto)`
-                  : 'Toque para abrir el banco de reflejos acústico-visual'}
+                  : 'Colóquese los audífonos y toque para iniciar la evaluación'}
               </Text>
               <View style={[styles.launchButton, { backgroundColor: PsychoPalette.cyan }]}>
                 <Text style={styles.launchButtonText}>INICIAR PRUEBA</Text>
@@ -217,7 +423,7 @@ export default function DashboardScreen() {
             </View>
           </Pressable>
 
-          {/* TARJETA 2: PRUEBA DEL TORNO (COORDINACIÓN BIMANUAL) */}
+          {/* TARJETA 2: PRUEBA DEL TORNO (VELOCIDAD ADAPTATIVA + ANILLOS COMPACTOS) */}
           <Pressable
             onPress={() => router.push('/lathe')}
             style={({ pressed }) => [
@@ -232,7 +438,7 @@ export default function DashboardScreen() {
                     MÓDULO 02
                   </Text>
                 </View>
-                <Text style={styles.moduleTechTag}>DOBLE CARRIL • GESTOS SIMULTÁNEOS</Text>
+                <Text style={styles.moduleTechTag}>VELOCIDAD DINÁMICA POR DESEMPEÑO</Text>
               </View>
               {latheResult ? (
                 <View
@@ -275,18 +481,18 @@ export default function DashboardScreen() {
               <View style={styles.cardInfoColumn}>
                 <Text style={styles.cardTitle}>Prueba del Torno (Coordinación Bimanual)</Text>
                 <Text style={styles.cardDescription}>
-                  Dos carriles verticales ondulados en movimiento continuo. Mantenga ambos anillos
-                  guía dentro de la pista simultáneamente con control multitáctil.
+                  Doble carril ondulado con cursores de precisión compactos. La velocidad aumenta o
+                  se regula automáticamente en tiempo real según su desempeño.
                 </Text>
 
                 <View style={styles.cardSpecsRow}>
                   <View style={styles.specChip}>
-                    <Ionicons name="analytics-outline" size={12} color={PsychoPalette.mint} />
-                    <Text style={styles.specChipText}>Baremo: ≥ 75% precisión</Text>
+                    <Ionicons name="trending-up-outline" size={12} color={PsychoPalette.mint} />
+                    <Text style={styles.specChipText}>Velocidad Adaptativa 0.8x–2.2x</Text>
                   </View>
                   <View style={styles.specChip}>
-                    <Ionicons name="hand-left-outline" size={12} color={PsychoPalette.cyan} />
-                    <Text style={styles.specChipText}>Control Bimanual</Text>
+                    <Ionicons name="radio-button-on-outline" size={12} color={PsychoPalette.cyan} />
+                    <Text style={styles.specChipText}>Punteros de Precisión</Text>
                   </View>
                 </View>
               </View>
@@ -295,8 +501,8 @@ export default function DashboardScreen() {
             <View style={styles.cardFooter}>
               <Text style={styles.cardActionHint}>
                 {latheResult
-                  ? `Último registro: Izq ${latheResult.leftPrecisionPct}% | Der ${latheResult.rightPrecisionPct}% (Fuera: ${latheResult.offTrackSeconds}s)`
-                  : 'Toque para iniciar el test visomotriz de doble trazado'}
+                  ? `Último registro: Izq ${latheResult.leftPrecisionPct}% | Der ${latheResult.rightPrecisionPct}% (${latheResult.speedLevel})`
+                  : 'Toque para iniciar el test visomotriz con velocidad adaptativa'}
               </Text>
               <View style={[styles.launchButton, { backgroundColor: PsychoPalette.mint }]}>
                 <Text style={styles.launchButtonText}>INICIAR PRUEBA</Text>
@@ -305,7 +511,7 @@ export default function DashboardScreen() {
             </View>
           </Pressable>
 
-          {/* TARJETA 3: SIMULADOR DE MANIOBRAS 2D */}
+          {/* TARJETA 3: SIMULADOR DE MANIOBRAS 3D Y CABINA CON ESPEJOS */}
           <Pressable
             onPress={() => router.push('/maneuvers')}
             style={({ pressed }) => [
@@ -320,7 +526,7 @@ export default function DashboardScreen() {
                     MÓDULO 03
                   </Text>
                 </View>
-                <Text style={styles.moduleTechTag}>VISTA SUPERIOR 2D • JOYSTICK + PEDALES</Text>
+                <Text style={styles.moduleTechTag}>CARRETERA 3D • CABINA + ESPEJOS + MANDOS</Text>
               </View>
               {maneuverResult ? (
                 <View
@@ -341,7 +547,7 @@ export default function DashboardScreen() {
                 </View>
               ) : (
                 <View style={styles.pendingPill}>
-                  <Text style={styles.pendingPillText}>LISTO PARA INICIAR</Text>
+                  <Text style={styles.pendingPillText}>3 NIVELES EN 3D</Text>
                 </View>
               )}
             </View>
@@ -352,7 +558,7 @@ export default function DashboardScreen() {
                   <View style={styles.carPreviewTopDown} />
                 </View>
                 <Ionicons
-                  name="car-sport-outline"
+                  name="car-sport"
                   size={20}
                   color={PsychoPalette.vehicleBlueLight}
                   style={{ marginTop: 4 }}
@@ -360,16 +566,17 @@ export default function DashboardScreen() {
               </View>
 
               <View style={styles.cardInfoColumn}>
-                <Text style={styles.cardTitle}>Simulador de Maniobras 2D</Text>
+                <Text style={styles.cardTitle}>Simulador de Maniobras 3D + Cabina Real</Text>
                 <Text style={styles.cardDescription}>
-                  Circuito de orientación espacial en vista de pájaro (Top-Down) con vehículo azul,
-                  zona de parqueo demarcada, joystick de dirección y pedales de avance/freno.
+                  Conduzca en perspectiva 3D por los 3 niveles (Batería 90°, Paralelo y Eslalon) con
+                  cabina completa: espejos retrovisores activos, direccionales, luces, cinturón,
+                  freno de mano, volante, joystick compacto y pedales.
                 </Text>
 
                 <View style={styles.cardSpecsRow}>
                   <View style={styles.specChip}>
-                    <Ionicons name="compass-outline" size={12} color={PsychoPalette.mint} />
-                    <Text style={styles.specChipText}>Parqueo Exacto</Text>
+                    <Ionicons name="eye-outline" size={12} color={PsychoPalette.mint} />
+                    <Text style={styles.specChipText}>3 Espejos Retrovisores</Text>
                   </View>
                   <View style={styles.specChip}>
                     <Ionicons
@@ -377,7 +584,7 @@ export default function DashboardScreen() {
                       size={12}
                       color={PsychoPalette.cyan}
                     />
-                    <Text style={styles.specChipText}>Joystick + Pedales</Text>
+                    <Text style={styles.specChipText}>Mandos de Carro Normal</Text>
                   </View>
                 </View>
               </View>
@@ -387,10 +594,10 @@ export default function DashboardScreen() {
               <Text style={styles.cardActionHint}>
                 {maneuverResult
                   ? `Último registro: ${maneuverResult.scenarioTitle} en ${maneuverResult.elapsedSeconds}s (${maneuverResult.collisions} colisiones)`
-                  : 'Toque para abrir la pista de maniobras y estacionamiento 2D'}
+                  : 'Toque para entrar a la cabina 3D y superar los 3 niveles'}
               </Text>
               <View style={[styles.launchButton, { backgroundColor: PsychoPalette.cyan }]}>
-                <Text style={styles.launchButtonText}>INICIAR SIMULADOR</Text>
+                <Text style={styles.launchButtonText}>ENTRAR A CABINA 3D</Text>
                 <Ionicons name="arrow-forward" size={15} color={PsychoPalette.bgPrimary} />
               </View>
             </View>
@@ -403,12 +610,12 @@ export default function DashboardScreen() {
             <View style={styles.benchmarksTitleRow}>
               <Ionicons name="shield-checkmark-outline" size={18} color={PsychoPalette.mint} />
               <Text style={styles.benchmarksTitle}>
-                RESUMEN DE BAREMOS OFICIALES PSICOTÉCNICOS
+                RESUMEN DE BAREMOS OFICIALES PSICOTÉCNICOS Y VIALES
               </Text>
             </View>
             <Text style={styles.benchmarksSubtitle}>
-              Parámetros normativos de aptitud psicofísica para obtención y renovación de licencias
-              de conducción
+              Parámetros normativos de aptitud psicofísica, protocolo preoperacional y destreza en
+              conducción 3D
             </Text>
           </View>
 
@@ -464,6 +671,158 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
   },
+  welcomeScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    maxWidth: 820,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  welcomeCard: {
+    backgroundColor: PsychoPalette.bgSecondary,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0, 217, 245, 0.4)',
+    padding: 18,
+    gap: 16,
+  },
+  welcomeTopBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  welcomeLivePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: PsychoPalette.mintDim,
+    borderWidth: 1,
+    borderColor: PsychoPalette.mint,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  welcomeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: PsychoPalette.mint,
+  },
+  welcomeLiveText: {
+    color: PsychoPalette.mint,
+    fontSize: 10,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+    letterSpacing: 0.6,
+  },
+  welcomeTelemetryTag: {
+    color: PsychoPalette.cyan,
+    fontSize: 11,
+    fontWeight: '800',
+    fontFamily: Fonts.mono,
+  },
+  heroImageContainer: {
+    width: '100%',
+    height: 240,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: PsychoPalette.borderSubtle,
+    position: 'relative',
+    backgroundColor: '#050A14',
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+  },
+  heroOverlayBadge: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(5, 10, 20, 0.86)',
+    borderWidth: 1,
+    borderColor: PsychoPalette.mint,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  heroOverlayText: {
+    color: PsychoPalette.textPrimary,
+    fontSize: 11,
+    fontWeight: '800',
+    fontFamily: Fonts.mono,
+    flex: 1,
+  },
+  welcomeTextSection: {
+    gap: 8,
+  },
+  welcomeTitle: {
+    color: PsychoPalette.textPrimary,
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
+  welcomeDescription: {
+    color: PsychoPalette.textSecondary,
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  welcomeFeaturesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  welcomeFeatureItem: {
+    flex: 1,
+    minWidth: 150,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: PsychoPalette.bgPanel,
+    borderWidth: 1,
+    borderColor: PsychoPalette.borderSubtle,
+    padding: 10,
+    borderRadius: 12,
+  },
+  welcomeFeatureTextCol: {
+    flex: 1,
+  },
+  welcomeFeatureTitle: {
+    color: PsychoPalette.textPrimary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  welcomeFeatureSub: {
+    color: PsychoPalette.textMuted,
+    fontSize: 10,
+    marginTop: 1,
+  },
+  welcomeStartButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: PsychoPalette.mint,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    marginTop: 4,
+  },
+  welcomeStartButtonText: {
+    color: PsychoPalette.bgPrimary,
+    fontSize: 15,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+    letterSpacing: 0.8,
+  },
   scrollContent: {
     paddingHorizontal: 14,
     paddingTop: 12,
@@ -499,6 +858,28 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontFamily: Fonts.mono,
     letterSpacing: 0.7,
+  },
+  bannerRightBtns: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  coverBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: PsychoPalette.bgPanel,
+    borderWidth: 1,
+    borderColor: PsychoPalette.borderSubtle,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  coverBtnText: {
+    color: PsychoPalette.textSecondary,
+    fontSize: 10,
+    fontWeight: '800',
+    fontFamily: Fonts.mono,
   },
   calibrateBtn: {
     flexDirection: 'row',
@@ -605,6 +986,9 @@ const styles = StyleSheet.create({
   moduleCardMint: {
     borderColor: 'rgba(0, 245, 160, 0.35)',
   },
+  moduleCardAmber: {
+    borderColor: 'rgba(245, 158, 11, 0.45)',
+  },
   cardPressed: {
     opacity: 0.92,
     transform: [{ scale: 0.992 }],
@@ -677,6 +1061,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 8,
+  },
+  previewMiniTag: {
+    color: PsychoPalette.amberWarning,
+    fontSize: 8,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+    marginTop: 5,
   },
   splitPreviewContainer: {
     flexDirection: 'row',

@@ -36,10 +36,20 @@ export const PsychoPalette = {
 
 export const OFFICIAL_BENCHMARKS = [
   {
+    id: 'preoperational',
+    code: 'MOD-00',
+    title: 'Inspección Preoperacional',
+    metricLabel: 'Verificación mecánica, fluidos, llantas y seguridad',
+    excellent: '100% puntos + anomalías',
+    approved: '≥ 85% puntos revisados',
+    rejected: '< 85% o falla crítica',
+    normRef: 'PESV / Protocolo Preoperacional',
+  },
+  {
     id: 'reaction',
     code: 'MOD-01',
-    title: 'Reacción Auditivo-Motora',
-    metricLabel: 'Tiempo medio de respuesta',
+    title: 'Reacción Auditivo-Motora (Con Audífonos)',
+    metricLabel: 'Tiempo medio de respuesta binaural',
     excellent: '< 260 ms',
     approved: '260 – 380 ms',
     rejected: '> 380 ms / >2 fallos',
@@ -48,8 +58,8 @@ export const OFFICIAL_BENCHMARKS = [
   {
     id: 'lathe',
     code: 'MOD-02',
-    title: 'Coordinación Bimanual (Torno)',
-    metricLabel: 'Permanencia simultánea en carril',
+    title: 'Coordinación Bimanual (Torno Adaptativo)',
+    metricLabel: 'Permanencia simultánea con velocidad variable',
     excellent: '≥ 90% precisión',
     approved: '75% – 89% precisión',
     rejected: '< 75% precisión',
@@ -58,12 +68,12 @@ export const OFFICIAL_BENCHMARKS = [
   {
     id: 'maneuvers',
     code: 'MOD-03',
-    title: 'Simulador de Maniobras 2D',
-    metricLabel: 'Estacionamiento y orientación espacial',
-    excellent: '< 25 s • 0 colisiones',
-    approved: '25 – 50 s • ≤1 roce',
-    rejected: '> 50 s o colisión grave',
-    normRef: 'Prueba Práctica Espacial',
+    title: 'Simulador de Conducción 3D y Cabina',
+    metricLabel: 'Control de cabina, espejos y estacionamiento 3D',
+    excellent: '< 30 s • 0 colisiones',
+    approved: '30 – 60 s • ≤1 roce',
+    rejected: '> 60 s o colisión grave',
+    normRef: 'Prueba Práctica en Carretera 3D',
   },
 ] as const;
 

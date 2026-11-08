@@ -53,6 +53,11 @@ export function usePsychAudio() {
         // Ignore if platform does not support specific audio mode flags
       });
     }
+    // Pre-initialize shared players on client mount so first playback is instant
+    getOrCreatePlayer('left');
+    getOrCreatePlayer('right');
+    getOrCreatePlayer('success');
+    getOrCreatePlayer('error');
   }, []);
 
   const triggerHaptic = useCallback((type: SoundKey) => {
@@ -74,21 +79,23 @@ export function usePsychAudio() {
 
   const playSoundKey = useCallback(
     async (key: SoundKey) => {
-      const t0 = performance.now();
+      const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
       try {
         const player = getOrCreatePlayer(key);
         if (player) {
-          await player.seekTo(0);
+          try {
+            await player.seekTo(0);
+          } catch {
+            // Ignore seek error if player is already at 0 or still preparing
+          }
           player.play();
         }
       } catch {
         // Fallback if audio device is busy
       }
       if (key === 'left' || key === 'right') {
-        const elapsed = Math.max(
-          4.8,
-          Math.min(28.0, Number((performance.now() - t0 + 8.5).toFixed(1)))
-        );
+        const t1 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        const elapsed = Math.max(4.8, Math.min(28.0, Number((t1 - t0 + 8.5).toFixed(1))));
         setMeasuredAudioLatencyMs(elapsed);
       }
       triggerHaptic(key);

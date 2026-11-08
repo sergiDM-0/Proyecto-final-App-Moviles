@@ -36,9 +36,10 @@ export default function RootLayout() {
             screenOptions={{
               headerShown: false,
               contentStyle: { backgroundColor: PsychoPalette.bgPrimary },
-              animation: 'fade_from_bottom',
+              animation: 'fade',
             }}>
             <Stack.Screen name="index" />
+            <Stack.Screen name="preoperational" />
             <Stack.Screen name="reaction" />
             <Stack.Screen name="lathe" />
             <Stack.Screen name="maneuvers" />
