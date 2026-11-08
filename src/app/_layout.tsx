@@ -1,18 +1,58 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
+import { DarkTheme, ThemeProvider } from 'expo-router';
+import { Stack } from 'expo-router/stack';
 import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import React, { useEffect } from 'react';
+import { StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+import { PsychoPalette } from '@/constants/theme';
+import { EvaluationProvider } from '@/context/evaluation-context';
 
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+const AutoTestDarkTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: PsychoPalette.bgPrimary,
+    card: PsychoPalette.bgSecondary,
+    text: PsychoPalette.textPrimary,
+    border: PsychoPalette.borderSubtle,
+    primary: PsychoPalette.mint,
+  },
+};
+
+export default function RootLayout() {
+  useEffect(() => {
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
+
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
-    </ThemeProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <EvaluationProvider>
+        <ThemeProvider value={AutoTestDarkTheme}>
+          <StatusBar style="light" />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: PsychoPalette.bgPrimary },
+              animation: 'fade_from_bottom',
+            }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="reaction" />
+            <Stack.Screen name="lathe" />
+            <Stack.Screen name="maneuvers" />
+          </Stack>
+        </ThemeProvider>
+      </EvaluationProvider>
+    </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: PsychoPalette.bgPrimary,
+  },
+});
