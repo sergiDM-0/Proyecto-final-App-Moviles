@@ -1,7 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, {
@@ -13,31 +21,132 @@ import Svg, {
   LinearGradient,
   Path,
   Polygon,
+  RadialGradient,
   Rect,
   Stop,
   Text as SvgText,
 } from 'react-native-svg';
 
-import { TelemetryHeader } from '@/components/telemetry-header';
 import { Fonts, PsychoPalette } from '@/constants/theme';
 import { AptitudeGrade, useEvaluation } from '@/context/evaluation-context';
 import { usePsychAudio } from '@/hooks/use-psych-audio';
 
-const WORLD_W = 600;
-const WORLD_H = 380;
+// Entorno 3D ampliado (gran complejo vial de 1200 x 920 unidades)
+const WORLD_W = 1200;
+const WORLD_H = 920;
 const CAR_LENGTH = 54;
 const CAR_WIDTH = 28;
 const WHEELBASE = 36;
 const MAX_STEER_RAD = (38 * Math.PI) / 180;
-const STEERING_WHEEL_RADIUS = 48;
+const STEERING_WHEEL_RADIUS = 54;
 
-// Dimensiones del visor 3D estilo urbano diurno (como la imagen de referencia)
-const VIEW3D_W = 720;
-const VIEW3D_H = 420;
-const HORIZON_Y = 122;
-const FOCAL_LEN = 320;
+// Visor panorámico horizontal 16:9 optimizado para pantalla de celular en horizontal
+const VIEW3D_W = 960;
+const VIEW3D_H = 440;
+const HORIZON_Y = 136;
+const FOCAL_LEN = 390;
+
+export type ManualGear = 'R' | 'N' | '1' | '2' | '3' | '4' | '5';
+
+interface GearSpec {
+  gear: ManualGear;
+  label: string;
+  shortDesc: string;
+  maxSpeedPx: number;
+  maxKmh: number;
+  accelFactor: number;
+  slotX: number;
+  slotY: number;
+}
+
+export const GEAR_SPECS: Record<ManualGear, GearSpec> = {
+  R: {
+    gear: 'R',
+    label: 'REVERSA (R)',
+    shortDesc: 'Marcha atrás — Presione ACELERADOR para retroceder',
+    maxSpeedPx: -88,
+    maxKmh: 24,
+    accelFactor: 1.15,
+    slotX: 18,
+    slotY: 22,
+  },
+  N: {
+    gear: 'N',
+    label: 'NEUTRO (N)',
+    shortDesc: 'Punto muerto — Motor desacoplado sin tracción',
+    maxSpeedPx: 0,
+    maxKmh: 0,
+    accelFactor: 0,
+    slotX: 50,
+    slotY: 50,
+  },
+  '1': {
+    gear: '1',
+    label: '1ª MARCHA',
+    shortDesc: 'Arranque y maniobra de precisión (0-22 km/h)',
+    maxSpeedPx: 78,
+    maxKmh: 22,
+    accelFactor: 1.38,
+    slotX: 18,
+    slotY: 78,
+  },
+  '2': {
+    gear: '2',
+    label: '2ª MARCHA',
+    shortDesc: 'Giro en circuito y pista urbana (0-38 km/h)',
+    maxSpeedPx: 134,
+    maxKmh: 38,
+    accelFactor: 1.12,
+    slotX: 39,
+    slotY: 22,
+  },
+  '3': {
+    gear: '3',
+    label: '3ª MARCHA',
+    shortDesc: 'Circulación media en avenida (0-56 km/h)',
+    maxSpeedPx: 196,
+    maxKmh: 56,
+    accelFactor: 0.9,
+    slotX: 39,
+    slotY: 78,
+  },
+  '4': {
+    gear: '4',
+    label: '4ª MARCHA',
+    shortDesc: 'Crucero rápido en recta (0-78 km/h)',
+    maxSpeedPx: 268,
+    maxKmh: 78,
+    accelFactor: 0.74,
+    slotX: 61,
+    slotY: 22,
+  },
+  '5': {
+    gear: '5',
+    label: '5ª MARCHA',
+    shortDesc: 'Velocidad máxima de pista (0-100 km/h)',
+    maxSpeedPx: 340,
+    maxKmh: 100,
+    accelFactor: 0.6,
+    slotX: 61,
+    slotY: 78,
+  },
+};
 
 interface ConePoint {
+  x: number;
+  y: number;
+}
+
+interface TreePoint {
+  x: number;
+  y: number;
+  height: number;
+  canopyDark: string;
+  canopyMid: string;
+  canopyLight: string;
+}
+
+interface LampPoint {
   x: number;
   y: number;
 }
@@ -46,14 +155,6 @@ interface FloorArrow {
   x: number;
   y: number;
   angleDeg: number;
-}
-
-interface ObstacleBox {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  label?: string;
 }
 
 interface ParkingZone {
@@ -74,138 +175,172 @@ interface ScenarioConfig {
   parkingZone: ParkingZone;
   cones: ConePoint[];
   arrows: FloorArrow[];
-  obstacles: ObstacleBox[];
 }
 
-// Los 3 niveles de la prueba de conducción ambientados en la pista 3D de conos, flechas amarillas y zona P azul
+// Árboles 3D volumétricos distribuidos alrededor del gran complejo vial (1200 x 920)
+const WORLD_TREES: TreePoint[] = [
+  // Bosque perimetral Norte
+  { x: 90, y: 28, height: 85, canopyDark: '#14532D', canopyMid: '#15803D', canopyLight: '#4ADE80' },
+  { x: 220, y: 24, height: 92, canopyDark: '#064E3B', canopyMid: '#059669', canopyLight: '#34D399' },
+  { x: 360, y: 26, height: 78, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#86EFAC' },
+  { x: 510, y: 22, height: 96, canopyDark: '#78350F', canopyMid: '#D97706', canopyLight: '#FBBF24' },
+  { x: 660, y: 25, height: 88, canopyDark: '#14532D', canopyMid: '#15803D', canopyLight: '#4ADE80' },
+  { x: 810, y: 24, height: 90, canopyDark: '#064E3B', canopyMid: '#059669', canopyLight: '#6EE7B7' },
+  { x: 960, y: 28, height: 84, canopyDark: '#7C2D12', canopyMid: '#EA580C', canopyLight: '#FB923C' },
+  { x: 1100, y: 30, height: 92, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#4ADE80' },
+  // Avenida Izquierda
+  { x: 35, y: 150, height: 82, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#4ADE80' },
+  { x: 32, y: 310, height: 90, canopyDark: '#064E3B', canopyMid: '#059669', canopyLight: '#34D399' },
+  { x: 36, y: 470, height: 80, canopyDark: '#78350F', canopyMid: '#CA8A04', canopyLight: '#FACC15' },
+  { x: 34, y: 630, height: 88, canopyDark: '#14532D', canopyMid: '#15803D', canopyLight: '#86EFAC' },
+  { x: 38, y: 790, height: 84, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#4ADE80' },
+  // Avenida Derecha
+  { x: 1160, y: 160, height: 88, canopyDark: '#14532D', canopyMid: '#15803D', canopyLight: '#4ADE80' },
+  { x: 1165, y: 320, height: 82, canopyDark: '#064E3B', canopyMid: '#059669', canopyLight: '#34D399' },
+  { x: 1162, y: 480, height: 94, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#86EFAC' },
+  { x: 1158, y: 640, height: 86, canopyDark: '#7C2D12', canopyMid: '#EA580C', canopyLight: '#FDBA74' },
+  { x: 1160, y: 800, height: 90, canopyDark: '#14532D', canopyMid: '#15803D', canopyLight: '#4ADE80' },
+  // Parque Sur
+  { x: 180, y: 885, height: 86, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#4ADE80' },
+  { x: 380, y: 888, height: 82, canopyDark: '#064E3B', canopyMid: '#059669', canopyLight: '#34D399' },
+  { x: 590, y: 890, height: 92, canopyDark: '#78350F', canopyMid: '#D97706', canopyLight: '#FBBF24' },
+  { x: 800, y: 886, height: 86, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#86EFAC' },
+  { x: 1010, y: 884, height: 88, canopyDark: '#14532D', canopyMid: '#15803D', canopyLight: '#4ADE80' },
+  // Islas ecológicas internas del circuito
+  { x: 920, y: 240, height: 76, canopyDark: '#14532D', canopyMid: '#16A34A', canopyLight: '#4ADE80' },
+  { x: 920, y: 560, height: 80, canopyDark: '#064E3B', canopyMid: '#059669', canopyLight: '#6EE7B7' },
+];
+
+// Postes de alumbrado vial 3D a lo largo de la pista
+const WORLD_LAMPS: LampPoint[] = [
+  { x: 140, y: 85 },
+  { x: 420, y: 85 },
+  { x: 700, y: 85 },
+  { x: 980, y: 85 },
+  { x: 95, y: 380 },
+  { x: 95, y: 680 },
+  { x: 1095, y: 380 },
+  { x: 1095, y: 680 },
+];
+
+// Los 3 niveles de conducción dentro del nuevo entorno amplio (1200 x 920)
 const SCENARIOS: ScenarioConfig[] = [
   {
     id: 'bay',
-    title: 'Nivel 1: Circuito de Conos y Parqueo [P] (90°)',
+    title: 'Nivel 1: Circuito Vial y Parqueo en Bahía [P] (90°)',
     shortLabel: '1. PARQUEO [P] 90°',
-    startX: 145,
-    startY: 315,
-    startAngleDeg: -12,
+    startX: 240,
+    startY: 730,
+    startAngleDeg: -42,
     parkingZone: {
-      x: 262,
-      y: 42,
-      w: 62,
-      h: 86,
+      x: 520,
+      y: 120,
+      w: 110,
+      h: 140,
       targetAngleDeg: -90,
     },
     cones: [
-      // Corredor izquierdo y derecho de conos naranjas con blanco (como en la imagen)
-      { x: 95, y: 345 },
-      { x: 145, y: 345 },
-      { x: 195, y: 345 },
-      { x: 245, y: 345 },
-      { x: 295, y: 345 },
-      { x: 345, y: 345 },
-      { x: 395, y: 345 },
-      { x: 105, y: 245 },
-      { x: 155, y: 245 },
-      { x: 205, y: 245 },
-      // Conos que delimitan el cajón de parqueo P
-      { x: 235, y: 132 },
-      { x: 235, y: 92 },
-      { x: 235, y: 52 },
-      { x: 350, y: 132 },
-      { x: 350, y: 92 },
-      { x: 350, y: 52 },
-      { x: 410, y: 132 },
-      { x: 460, y: 132 },
+      // Carril de salida amplio
+      { x: 150, y: 810 },
+      { x: 260, y: 810 },
+      { x: 370, y: 810 },
+      { x: 480, y: 810 },
+      { x: 590, y: 810 },
+      { x: 700, y: 810 },
+      // Guía izquierda de aproximación
+      { x: 180, y: 560 },
+      { x: 270, y: 460 },
+      { x: 360, y: 370 },
+      // Conos que delimitan la Bahía Oficial [P]
+      { x: 485, y: 275 },
+      { x: 485, y: 200 },
+      { x: 485, y: 125 },
+      { x: 665, y: 275 },
+      { x: 665, y: 200 },
+      { x: 665, y: 125 },
+      // Guía derecha
+      { x: 760, y: 340 },
+      { x: 840, y: 440 },
     ],
     arrows: [
-      { x: 185, y: 290, angleDeg: 0 },
-      { x: 275, y: 265, angleDeg: -45 },
-      { x: 293, y: 175, angleDeg: -90 },
-    ],
-    obstacles: [
-      { x: 165, y: 42, w: 62, h: 80, label: 'CONOS IZQ' },
-      { x: 360, y: 42, w: 62, h: 80, label: 'CONOS DER' },
+      { x: 320, y: 640, angleDeg: -42 },
+      { x: 445, y: 500, angleDeg: -65 },
+      { x: 555, y: 360, angleDeg: -90 },
     ],
   },
   {
     id: 'parallel',
-    title: 'Nivel 2: Parqueo en Paralelo entre Conos [P]',
+    title: 'Nivel 2: Avenida y Parqueo en Paralelo [P]',
     shortLabel: '2. PARALELO [P]',
-    startX: 130,
-    startY: 225,
-    startAngleDeg: 0,
+    startX: 210,
+    startY: 560,
+    startAngleDeg: -18,
     parkingZone: {
-      x: 255,
-      y: 46,
-      w: 92,
-      h: 52,
+      x: 510,
+      y: 130,
+      w: 160,
+      h: 92,
       targetAngleDeg: 0,
     },
     cones: [
-      { x: 140, y: 46 },
-      { x: 185, y: 46 },
-      { x: 230, y: 46 },
-      { x: 230, y: 95 },
-      { x: 368, y: 46 },
-      { x: 415, y: 46 },
-      { x: 460, y: 46 },
-      { x: 368, y: 95 },
-      // Hilera inferior de conos
-      { x: 130, y: 285 },
-      { x: 195, y: 285 },
-      { x: 260, y: 285 },
-      { x: 325, y: 285 },
-      { x: 390, y: 285 },
-      { x: 455, y: 285 },
+      { x: 310, y: 130 },
+      { x: 395, y: 130 },
+      { x: 480, y: 130 },
+      { x: 480, y: 225 },
+      { x: 700, y: 130 },
+      { x: 785, y: 130 },
+      { x: 870, y: 130 },
+      { x: 700, y: 225 },
+      // Borde inferior del carril
+      { x: 220, y: 720 },
+      { x: 360, y: 720 },
+      { x: 500, y: 720 },
+      { x: 640, y: 720 },
+      { x: 780, y: 720 },
+      { x: 920, y: 720 },
     ],
     arrows: [
-      { x: 195, y: 195, angleDeg: 0 },
-      { x: 295, y: 175, angleDeg: 0 },
-      { x: 355, y: 135, angleDeg: -145 },
-    ],
-    obstacles: [
-      { x: 135, y: 44, w: 96, h: 48, label: 'ZONA CONOS 1' },
-      { x: 365, y: 44, w: 96, h: 48, label: 'ZONA CONOS 2' },
+      { x: 340, y: 490, angleDeg: -18 },
+      { x: 520, y: 410, angleDeg: -22 },
+      { x: 640, y: 310, angleDeg: -155 },
     ],
   },
   {
     id: 'garage',
-    title: 'Nivel 3: Eslalon de Conos y Meta [P]',
+    title: 'Nivel 3: Gran Eslalon de Conos y Meta [P]',
     shortLabel: '3. ESLALON CONOS',
-    startX: 95,
-    startY: 300,
-    startAngleDeg: -18,
+    startX: 190,
+    startY: 740,
+    startAngleDeg: -28,
     parkingZone: {
-      x: 468,
-      y: 56,
-      w: 88,
-      h: 56,
+      x: 840,
+      y: 145,
+      w: 150,
+      h: 100,
       targetAngleDeg: 0,
     },
     cones: [
-      { x: 240, y: 180 },
-      { x: 240, y: 215 },
-      { x: 240, y: 250 },
-      { x: 275, y: 180 },
-      { x: 275, y: 250 },
-      { x: 365, y: 65 },
-      { x: 365, y: 100 },
-      { x: 365, y: 135 },
-      { x: 400, y: 65 },
-      { x: 400, y: 135 },
-      // Conos guía exteriores
-      { x: 145, y: 340 },
-      { x: 215, y: 340 },
-      { x: 310, y: 310 },
-      { x: 420, y: 240 },
-      { x: 495, y: 185 },
+      // Puertas de eslalon en la gran explanada
+      { x: 410, y: 540 },
+      { x: 410, y: 615 },
+      { x: 590, y: 360 },
+      { x: 590, y: 435 },
+      { x: 750, y: 410 },
+      { x: 750, y: 485 },
+      // Borde exterior de referencia
+      { x: 260, y: 820 },
+      { x: 450, y: 800 },
+      { x: 650, y: 740 },
+      { x: 840, y: 640 },
+      { x: 980, y: 480 },
+      { x: 810, y: 145 },
+      { x: 1015, y: 145 },
     ],
     arrows: [
-      { x: 165, y: 265, angleDeg: -25 },
-      { x: 305, y: 150, angleDeg: 15 },
-      { x: 430, y: 120, angleDeg: -25 },
-    ],
-    obstacles: [
-      { x: 238, y: 175, w: 40, h: 82, label: 'BARRERA CONOS 1' },
-      { x: 363, y: 60, w: 40, h: 82, label: 'BARRERA CONOS 2' },
+      { x: 310, y: 650, angleDeg: -30 },
+      { x: 500, y: 480, angleDeg: -15 },
+      { x: 700, y: 320, angleDeg: -25 },
+      { x: 830, y: 265, angleDeg: -45 },
     ],
   },
 ];
@@ -246,7 +381,7 @@ function projectPoint3D(
   camY: number,
   camZ: number,
   camYaw: number,
-  pitchOffset = 18
+  pitchOffset = 10
 ): ProjectedPt | null {
   const dx = pt.x - camX;
   const dy = pt.y - camY;
@@ -271,11 +406,11 @@ function projectPolygon3D(
   camY: number,
   camZ: number,
   camYaw: number,
-  pitchOffset = 18
+  pitchOffset = 10
 ): { pointsStr: string; avgDepth: number; centerSx: number; centerSy: number } | null {
   const cos = Math.cos(camYaw);
   const sin = Math.sin(camYaw);
-  const nearPlane = 10;
+  const nearPlane = 9;
 
   const camPts = pts.map((p) => {
     const dx = p.x - camX;
@@ -328,7 +463,65 @@ function projectPolygon3D(
   };
 }
 
+// Pre-generación de losas de pavimento y carriles para un piso 3D realista con sensación real de velocidad
+const ASPHALT_TILES: { x: number; y: number; w: number; h: number; shade: string }[] = [];
+const tileStepX = 160;
+const tileStepY = 140;
+for (let gx = 80; gx < WORLD_W - 80; gx += tileStepX) {
+  for (let gy = 80; gy < WORLD_H - 80; gy += tileStepY) {
+    const isAlt = ((gx / tileStepX + gy / tileStepY) | 0) % 2 === 0;
+    ASPHALT_TILES.push({
+      x: gx,
+      y: gy,
+      w: Math.min(tileStepX, WORLD_W - 80 - gx),
+      h: Math.min(tileStepY, WORLD_H - 80 - gy),
+      shade: isAlt ? '#334155' : '#2D3A4E',
+    });
+  }
+}
+
+// Bordillos perimetrales 3D Rojos y Blancos
+const CURB_SEGMENTS: { x1: number; y1: number; x2: number; y2: number; color: string }[] = [];
+const curbStep = 80;
+for (let cx = 80; cx < WORLD_W - 80; cx += curbStep) {
+  const isRed = ((cx / curbStep) | 0) % 2 === 0;
+  CURB_SEGMENTS.push({
+    x1: cx,
+    y1: 80,
+    x2: Math.min(cx + curbStep, WORLD_W - 80),
+    y2: 90,
+    color: isRed ? '#DC2626' : '#F8FAFC',
+  });
+  CURB_SEGMENTS.push({
+    x1: cx,
+    y1: WORLD_H - 90,
+    x2: Math.min(cx + curbStep, WORLD_W - 80),
+    y2: WORLD_H - 80,
+    color: isRed ? '#F8FAFC' : '#DC2626',
+  });
+}
+for (let cy = 80; cy < WORLD_H - 80; cy += curbStep) {
+  const isRed = ((cy / curbStep) | 0) % 2 === 0;
+  CURB_SEGMENTS.push({
+    x1: 80,
+    y1: cy,
+    x2: 90,
+    y2: Math.min(cy + curbStep, WORLD_H - 80),
+    color: isRed ? '#DC2626' : '#F8FAFC',
+  });
+  CURB_SEGMENTS.push({
+    x1: WORLD_W - 90,
+    y1: cy,
+    x2: WORLD_W - 80,
+    y2: Math.min(cy + curbStep, WORLD_H - 80),
+    color: isRed ? '#F8FAFC' : '#DC2626',
+  });
+}
+
 export default function ManeuversSimulatorScreen() {
+  const { width: winW, height: winH } = useWindowDimensions();
+  const isPortraitScreen = winH > winW;
+
   const { preoperationalResult, setManeuverResult } = useEvaluation();
   const { playLeftSignal, playRightSignal, playSuccess, playError } = usePsychAudio();
 
@@ -339,28 +532,38 @@ export default function ManeuversSimulatorScreen() {
     angleRad: (SCENARIOS[0].startAngleDeg * Math.PI) / 180,
     speed: 0,
     steerRad: 0,
+    rpm: 900,
   });
 
-  // Historial de huellas de neumáticos sobre el cemento (como en la imagen)
   const [tireTracks, setTireTracks] = useState<{ x: number; y: number; angleRad: number }[]>([]);
+  const [hitConeIndices, setHitConeIndices] = useState<number[]>([]);
 
-  // Mandos del vehículo
-  const [gear, setGear] = useState<'D' | 'R'>('D');
+  // Mandos de cabina en primera persona
+  const [gear, setGear] = useState<ManualGear>('1');
+  const [engineOn, setEngineOn] = useState<boolean>(true);
   const [handbrakeOn, setHandbrakeOn] = useState<boolean>(false);
   const [seatbeltOn, setSeatbeltOn] = useState<boolean>(true);
   const [turnSignal, setTurnSignal] = useState<'NONE' | 'LEFT' | 'RIGHT' | 'HAZARD'>('NONE');
   const [lightsOn, setLightsOn] = useState<boolean>(true);
+  const [wipersOn, setWipersOn] = useState<boolean>(false);
+  const [wiperAngle, setWiperAngle] = useState<number>(0);
   const [blinkTick, setBlinkTick] = useState<boolean>(true);
 
+  // Dirección (Volante) + 3 Pedales Independientes (Embrague, Freno, Acelerador)
   const [wheelDragX, setWheelDragX] = useState<number>(0);
-  const [gasActive, setGasActive] = useState<boolean>(false);
+  const [clutchActive, setClutchActive] = useState<boolean>(false);
   const [brakeActive, setBrakeActive] = useState<boolean>(false);
+  const [gasActive, setGasActive] = useState<boolean>(false);
+  const [throttleLock, setThrottleLock] = useState<boolean>(false);
 
   const [elapsedSec, setElapsedSec] = useState<number>(0);
   const [collisions, setCollisions] = useState<number>(0);
   const [alignmentPct, setAlignmentPct] = useState<number>(0);
   const [parkedSuccess, setParkedSuccess] = useState<boolean>(false);
   const [collisionFlash, setCollisionFlash] = useState<boolean>(false);
+  const [statusBanner, setStatusBanner] = useState<string>(
+    '1ª Marcha lista • Use los pedales independientes: EMBRAGUE, FRENO y ACELERADOR'
+  );
 
   const physicsRef = useRef({
     x: SCENARIOS[0].startX,
@@ -368,9 +571,13 @@ export default function ManeuversSimulatorScreen() {
     angleRad: (SCENARIOS[0].startAngleDeg * Math.PI) / 180,
     speed: 0,
     steerRad: 0,
-    gas: false,
+    rpm: 900,
+    clutch: false,
     brake: false,
-    gear: 'D' as 'D' | 'R',
+    gas: false,
+    throttleLock: false,
+    gear: '1' as ManualGear,
+    engineOn: true,
     handbrakeOn: false,
     collisions: 0,
     startTime: 0,
@@ -385,17 +592,93 @@ export default function ManeuversSimulatorScreen() {
   }, [wheelDragX]);
 
   useEffect(() => {
-    physicsRef.current.gas = gasActive;
+    physicsRef.current.clutch = clutchActive;
     physicsRef.current.brake = brakeActive;
+    physicsRef.current.gas = gasActive;
+    physicsRef.current.throttleLock = throttleLock;
     physicsRef.current.gear = gear;
+    physicsRef.current.engineOn = engineOn;
     physicsRef.current.handbrakeOn = handbrakeOn;
-  }, [gasActive, brakeActive, gear, handbrakeOn]);
+  }, [clutchActive, brakeActive, gasActive, throttleLock, gear, engineOn, handbrakeOn]);
+
+  // Soporte de teclado en Web (W=Acelerador, S=Freno, Espacio/C=Embrague, A/D=Volante, 1-5/R/N=Caja)
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      if (k === 'arrowup' || k === 'w') {
+        setGasActive(true);
+      } else if (k === 'arrowdown' || k === 's') {
+        setBrakeActive(true);
+      } else if (k === 'c' || k === 'shift') {
+        setClutchActive(true);
+      } else if (k === 'arrowleft' || k === 'a') {
+        setWheelDragX((prev) => Math.max(-STEERING_WHEEL_RADIUS, prev - 14));
+      } else if (k === 'arrowright' || k === 'd') {
+        setWheelDragX((prev) => Math.min(STEERING_WHEEL_RADIUS, prev + 14));
+      } else if (['1', '2', '3', '4', '5'].includes(k)) {
+        setGear(k as ManualGear);
+      } else if (k === 'r') {
+        setGear('R');
+      } else if (k === 'n') {
+        setGear('N');
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      if (k === 'arrowup' || k === 'w') {
+        setGasActive(false);
+      } else if (k === 'arrowdown' || k === 's') {
+        setBrakeActive(false);
+      } else if (k === 'c' || k === 'shift') {
+        setClutchActive(false);
+      } else if (k === 'arrowleft' || k === 'a' || k === 'arrowright' || k === 'd') {
+        setWheelDragX(0);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
 
   useEffect(() => {
     if (turnSignal === 'NONE') return;
     const timer = setInterval(() => setBlinkTick((p) => !p), 380);
     return () => clearInterval(timer);
   }, [turnSignal]);
+
+  useEffect(() => {
+    if (!wipersOn) return;
+    let dir = 1;
+    const timer = setInterval(() => {
+      setWiperAngle((prev) => {
+        if (prev >= 52) dir = -1;
+        if (prev <= 4) dir = 1;
+        return prev + dir * 8;
+      });
+    }, 70);
+    return () => clearInterval(timer);
+  }, [wipersOn]);
+
+  const selectGear = useCallback(
+    (nextGear: ManualGear) => {
+      setGear(nextGear);
+      const spec = GEAR_SPECS[nextGear];
+      setStatusBanner(`${spec.label}: ${spec.shortDesc}`);
+      if (nextGear === 'R') {
+        playError();
+      } else {
+        playRightSignal();
+      }
+    },
+    [playError, playRightSignal]
+  );
 
   const resetScenario = useCallback((targetScenario: ScenarioConfig) => {
     const initAngle = (targetScenario.startAngleDeg * Math.PI) / 180;
@@ -405,9 +688,13 @@ export default function ManeuversSimulatorScreen() {
       angleRad: initAngle,
       speed: 0,
       steerRad: 0,
-      gas: false,
+      rpm: 900,
+      clutch: false,
       brake: false,
-      gear: 'D',
+      gas: false,
+      throttleLock: false,
+      gear: '1',
+      engineOn: true,
       handbrakeOn: false,
       collisions: 0,
       startTime: performance.now(),
@@ -421,18 +708,24 @@ export default function ManeuversSimulatorScreen() {
       angleRad: initAngle,
       speed: 0,
       steerRad: 0,
+      rpm: 900,
     });
     setTireTracks([]);
-    setGear('D');
+    setHitConeIndices([]);
+    setGear('1');
+    setEngineOn(true);
     setHandbrakeOn(false);
     setWheelDragX(0);
-    setGasActive(false);
+    setClutchActive(false);
     setBrakeActive(false);
+    setGasActive(false);
+    setThrottleLock(false);
     setElapsedSec(0);
     setCollisions(0);
     setAlignmentPct(0);
     setParkedSuccess(false);
     setCollisionFlash(false);
+    setStatusBanner('1ª Marcha lista • Presione ACELERADOR para avanzar o FRENO para detenerse');
   }, []);
 
   const handleSelectScenario = useCallback(
@@ -443,7 +736,7 @@ export default function ManeuversSimulatorScreen() {
     [resetScenario]
   );
 
-  // Motor físico 60 FPS
+  // Motor físico 60 FPS con pedales independientes (Embrague, Freno, Acelerador) y Caja en H
   useEffect(() => {
     let rafId: number;
     let lastTime = performance.now();
@@ -459,114 +752,137 @@ export default function ManeuversSimulatorScreen() {
         const elapsed = Number(((now - p.startTime) / 1000).toFixed(1));
         setElapsedSec(elapsed);
 
-        const maxForwardSpeed = 112;
-        const maxReverseSpeed = -76;
-        const accelRate = 152;
-        const brakeDecelRate = 240;
-        const naturalFriction = 68;
+        const spec = GEAR_SPECS[p.gear];
+        const baseAccel = 165 * spec.accelFactor;
+        const brakeDecel = 310;
+        const rollingFriction = 48;
+        const isAccelerating = p.gas || p.throttleLock;
 
-        if (p.handbrakeOn) {
-          p.speed = Math.abs(p.speed) < 3 ? 0 : p.speed * 0.84;
-        } else if (p.gas && !p.brake) {
-          if (p.gear === 'D') {
-            p.speed = Math.min(maxForwardSpeed, p.speed + accelRate * dt);
-          } else {
-            p.speed = Math.max(maxReverseSpeed, p.speed - accelRate * dt);
-          }
+        if (!p.engineOn) {
+          p.rpm = 0;
+          p.speed = Math.abs(p.speed) < 3 ? 0 : p.speed * 0.92;
+        } else if (p.handbrakeOn) {
+          p.speed = Math.abs(p.speed) < 3 ? 0 : p.speed * 0.8;
+          p.rpm = 900;
         } else if (p.brake) {
-          if (p.speed > 8) {
-            p.speed = Math.max(0, p.speed - brakeDecelRate * dt);
+          // PEDAL DE FRENO INDEPENDIENTE: Exclusivamente frena y detiene el vehículo a 0 km/h
+          if (Math.abs(p.speed) < 5) {
+            p.speed = 0;
+          } else if (p.speed > 0) {
+            p.speed = Math.max(0, p.speed - brakeDecel * dt);
           } else {
-            p.speed = Math.max(maxReverseSpeed, p.speed - accelRate * 0.85 * dt);
+            p.speed = Math.min(0, p.speed + brakeDecel * dt);
           }
-        } else {
+          p.rpm = 900;
+        } else if (p.clutch || p.gear === 'N') {
+          // PEDAL DE EMBRAGUE O NEUTRO: Desacopla la transmisión; si pisa acelerador sube RPM en vacío
+          p.rpm = isAccelerating ? 5100 : 950;
           if (Math.abs(p.speed) < 3) {
             p.speed = 0;
           } else if (p.speed > 0) {
-            p.speed = Math.max(0, p.speed - naturalFriction * dt);
+            p.speed = Math.max(0, p.speed - rollingFriction * 0.7 * dt);
           } else {
-            p.speed = Math.min(0, p.speed + naturalFriction * dt);
+            p.speed = Math.min(0, p.speed + rollingFriction * 0.7 * dt);
           }
+        } else if (isAccelerating) {
+          // PEDAL DE ACELERADOR INDEPENDIENTE: Impulsa en la marcha seleccionada (1ª-5ª adelante, R atrás)
+          if (p.gear === 'R') {
+            p.speed = Math.max(spec.maxSpeedPx, p.speed - baseAccel * dt);
+          } else {
+            if (p.speed <= spec.maxSpeedPx) {
+              p.speed = Math.min(spec.maxSpeedPx, p.speed + baseAccel * dt);
+            } else {
+              p.speed = Math.max(spec.maxSpeedPx, p.speed - rollingFriction * 1.6 * dt);
+            }
+          }
+        } else {
+          // Fricción natural al soltar pedales
+          if (Math.abs(p.speed) < 3) {
+            p.speed = 0;
+          } else if (p.speed > 0) {
+            p.speed = Math.max(0, p.speed - rollingFriction * dt);
+          } else {
+            p.speed = Math.min(0, p.speed + rollingFriction * dt);
+          }
+        }
+
+        if (p.engineOn && !p.clutch && p.gear !== 'N') {
+          const maxForGear = Math.max(50, Math.abs(spec.maxSpeedPx));
+          const ratio = Math.min(1.15, Math.abs(p.speed) / maxForGear);
+          p.rpm = Math.round(900 + ratio * 5400);
         }
 
         const nextX = p.x + p.speed * Math.cos(p.angleRad) * dt;
         const nextY = p.y + p.speed * Math.sin(p.angleRad) * dt;
-        const angularVel = (p.speed / WHEELBASE) * Math.tan(p.steerRad);
+        const angularVel = (p.speed / WHEELBASE) * Math.tan(p.steerRad) * 1.15;
         const nextAngle = p.angleRad + angularVel * dt;
 
-        const corners = getCarCorners(nextX, nextY, nextAngle);
-        const outOfBounds = corners.some(
-          (c) => c.x < 18 || c.x > WORLD_W - 18 || c.y < 18 || c.y > WORLD_H - 18
-        );
+        // Límites del complejo vial con deslizamiento suave junto a los bordillos
+        p.x = Math.max(96, Math.min(WORLD_W - 96, nextX));
+        p.y = Math.max(96, Math.min(WORLD_H - 96, nextY));
+        p.angleRad = nextAngle;
 
-        const hitsObstacle = scenario.obstacles.some((obs) =>
-          corners.some(
-            (c) =>
-              c.x >= obs.x &&
-              c.x <= obs.x + obs.w &&
-              c.y >= obs.y &&
-              c.y <= obs.y + obs.h
-          )
-        );
+        // Colisión con conos
+        const corners = getCarCorners(p.x, p.y, p.angleRad);
+        let touchedConeIdx = -1;
+        scenario.cones.forEach((cone, idx) => {
+          const hit =
+            Math.hypot(p.x - cone.x, p.y - cone.y) < 18 ||
+            corners.some((c) => Math.hypot(c.x - cone.x, c.y - cone.y) < 10);
+          if (hit) touchedConeIdx = idx;
+        });
 
-        const hitsCone = scenario.cones.some((cone) =>
-          corners.some((c) => Math.hypot(c.x - cone.x, c.y - cone.y) < 9)
-        );
-
-        if (outOfBounds || hitsObstacle || hitsCone) {
-          p.speed = -p.speed * 0.35;
-          if (now - p.lastCollisionTime > 750) {
-            p.lastCollisionTime = now;
-            p.collisions += 1;
-            setCollisions(p.collisions);
-            setCollisionFlash(true);
-            playError();
-            setTimeout(() => setCollisionFlash(false), 380);
-          }
-        } else {
-          p.x = nextX;
-          p.y = nextY;
-          p.angleRad = nextAngle;
-
-          // Guardar huellas de neumáticos al moverse
-          if (Math.abs(p.speed) > 12 && now - p.lastTrackTime > 160) {
-            p.lastTrackTime = now;
-            setTireTracks((prev) => [
-              ...prev.slice(-18),
-              { x: p.x, y: p.y, angleRad: p.angleRad },
-            ]);
-          }
+        if (touchedConeIdx !== -1 && now - p.lastCollisionTime > 1100) {
+          p.lastCollisionTime = now;
+          p.collisions += 1;
+          setCollisions(p.collisions);
+          setHitConeIndices((prev) =>
+            prev.includes(touchedConeIdx) ? prev : [...prev, touchedConeIdx]
+          );
+          setCollisionFlash(true);
+          setStatusBanner('¡Atención! Cono impactado — Corrija con el volante y los pedales');
+          playError();
+          setTimeout(() => setCollisionFlash(false), 420);
         }
 
+        // Huellas de neumáticos en el pavimento
+        if (Math.abs(p.speed) > 12 && now - p.lastTrackTime > 150) {
+          p.lastTrackTime = now;
+          setTireTracks((prev) => [
+            ...prev.slice(-28),
+            { x: p.x, y: p.y, angleRad: p.angleRad },
+          ]);
+        }
+
+        // Evaluación de estacionamiento en Zona [P]
         const pz = scenario.parkingZone;
         const pzCenterX = pz.x + pz.w / 2;
         const pzCenterY = pz.y + pz.h / 2;
         const distToCenter = Math.hypot(p.x - pzCenterX, p.y - pzCenterY);
 
-        const currentCorners = getCarCorners(p.x, p.y, p.angleRad);
-        const cornersInside = currentCorners.filter(
+        const cornersInside = corners.filter(
           (c) =>
-            c.x >= pz.x - 5 &&
-            c.x <= pz.x + pz.w + 5 &&
-            c.y >= pz.y - 5 &&
-            c.y <= pz.y + pz.h + 5
+            c.x >= pz.x - 10 &&
+            c.x <= pz.x + pz.w + 10 &&
+            c.y >= pz.y - 10 &&
+            c.y <= pz.y + pz.h + 10
         ).length;
 
-        const distScore = Math.max(0, 100 - distToCenter * 0.85);
+        const distScore = Math.max(0, 100 - distToCenter * 0.45);
         const cornerScore = cornersInside * 25;
         const computedAlignment = Math.min(100, Math.round(distScore * 0.45 + cornerScore * 0.55));
         setAlignmentPct(computedAlignment);
 
-        if (cornersInside === 4 && Math.abs(p.speed) < 6) {
+        if (cornersInside === 4 && Math.abs(p.speed) < 8) {
           p.completed = true;
           p.speed = 0;
           setParkedSuccess(true);
           playSuccess();
 
           let grade: AptitudeGrade = 'APTO';
-          if (elapsed < 30 && p.collisions === 0 && seatbeltOn) {
+          if (elapsed < 45 && p.collisions === 0 && seatbeltOn) {
             grade = 'EXCELENTE';
-          } else if (p.collisions > 2 || elapsed > 65) {
+          } else if (p.collisions > 3 || elapsed > 95) {
             grade = 'NO APTO';
           }
 
@@ -586,6 +902,7 @@ export default function ManeuversSimulatorScreen() {
           angleRad: p.angleRad,
           speed: p.speed,
           steerRad: p.steerRad,
+          rpm: p.rpm,
         });
       }
 
@@ -596,238 +913,413 @@ export default function ManeuversSimulatorScreen() {
     return () => cancelAnimationFrame(rafId);
   }, [playError, playSuccess, scenario, seatbeltOn, setManeuverResult]);
 
-  // Gesto del Volante 3D (Esquina Inferior Izquierda)
+  // Gesto exclusivo de la Caja de Dirección (Volante): adapta coordenadas si la pantalla está rotada 90° en móvil
   const steeringWheelGesture = Gesture.Pan()
     .runOnJS(true)
     .onChange((e) => {
+      const deltaSteer = isPortraitScreen ? e.changeY : e.changeX;
       setWheelDragX((prev) =>
-        Math.max(-STEERING_WHEEL_RADIUS, Math.min(STEERING_WHEEL_RADIUS, prev + e.changeX))
+        Math.max(-STEERING_WHEEL_RADIUS, Math.min(STEERING_WHEEL_RADIUS, prev + deltaSteer))
       );
     })
     .onFinalize(() => {
       setWheelDragX(0);
     });
 
+  // Gesto de la Caja de Cambios Manual en H (R, N, 1, 2, 3, 4, 5)
+  const shifterPanGesture = Gesture.Pan()
+    .runOnJS(true)
+    .onUpdate((e) => {
+      const localX = Math.max(0, Math.min(100, e.x));
+      const localY = Math.max(0, Math.min(100, e.y));
+
+      if (localY > 36 && localY < 64) {
+        if (gear !== 'N') selectGear('N');
+        return;
+      }
+
+      const isTopRow = localY <= 36;
+      if (localX < 34) {
+        const g: ManualGear = isTopRow ? 'R' : '1';
+        if (gear !== g) selectGear(g);
+      } else if (localX < 68) {
+        const g: ManualGear = isTopRow ? '2' : '3';
+        if (gear !== g) selectGear(g);
+      } else {
+        const g: ManualGear = isTopRow ? '4' : '5';
+        if (gear !== g) selectGear(g);
+      }
+    });
+
   const steerAngleDeg = Math.round((carState.steerRad * 180) / Math.PI);
-  const wheelVisualRotateDeg = steerAngleDeg * 2.4;
+  const wheelVisualRotateDeg = steerAngleDeg * 2.6;
   const speedKmh = Math.round(Math.abs(carState.speed) * 0.32);
 
-  // Distancia trasera para el espejo retrovisor
-  const rearDistMeters = useMemo(() => {
-    const rearX = carState.x - (CAR_LENGTH / 2) * Math.cos(carState.angleRad);
-    const rearY = carState.y - (CAR_LENGTH / 2) * Math.sin(carState.angleRad);
-    let minPx = 220;
-    scenario.cones.forEach((c) => {
-      const d = Math.hypot(rearX - c.x, rearY - c.y);
-      if (d < minPx) minPx = d;
-    });
-    return Number(Math.max(0.2, minPx / 28).toFixed(1));
-  }, [carState.angleRad, carState.x, carState.y, scenario.cones]);
-
-  // Proyección 3D del entorno urbano (explanada gris, conos naranjas/blancos, flechas amarillas, cuadro azul [P] y letrero vertical [P])
+  // Renderizado 3D en Primera Persona con entorno amplio y piso realista
   const world3D = useMemo(() => {
-    const camDistBack = 112;
-    const camZ = 68;
+    const camDistBack = 4;
+    const camZ = 38;
+    const pitchOffset = 10;
+
     const camX = carState.x - Math.cos(carState.angleRad) * camDistBack;
     const camY = carState.y - Math.sin(carState.angleRad) * camDistBack;
     const camYaw = carState.angleRad;
 
-    // 1. Piso de concreto claro de la explanada de pruebas
-    const concretePlaza = projectPolygon3D(
+    // 1. Base de asfalto general del complejo vial
+    const asphaltBase = projectPolygon3D(
       [
-        { x: 0, y: 0, z: 0 },
-        { x: WORLD_W, y: 0, z: 0 },
-        { x: WORLD_W, y: WORLD_H, z: 0 },
-        { x: 0, y: WORLD_H, z: 0 },
+        { x: 80, y: 80, z: 0 },
+        { x: WORLD_W - 80, y: 80, z: 0 },
+        { x: WORLD_W - 80, y: WORLD_H - 80, z: 0 },
+        { x: 80, y: WORLD_H - 80, z: 0 },
       ],
       camX,
       camY,
       camZ,
-      camYaw
+      camYaw,
+      pitchOffset
     );
 
-    // 2. Líneas blancas de bahías de parqueo en el suelo
-    const whiteBayLines: string[] = [];
-    for (let bx = 110; bx <= 510; bx += 65) {
-      const linePoly = projectPolygon3D(
+    // 2. Losas texturizadas de asfalto y concreto (dan sensación real de velocidad y perspectiva en el piso)
+    const groundTiles: { pointsStr: string; shade: string }[] = [];
+    ASPHALT_TILES.forEach((tile) => {
+      const centerDist = Math.hypot(tile.x + tile.w / 2 - camX, tile.y + tile.h / 2 - camY);
+      if (centerDist > 920) return;
+      const poly = projectPolygon3D(
         [
-          { x: bx, y: 30, z: 0.1 },
-          { x: bx + 3, y: 30, z: 0.1 },
-          { x: bx + 3, y: 125, z: 0.1 },
-          { x: bx, y: 125, z: 0.1 },
+          { x: tile.x + 2, y: tile.y + 2, z: 0.05 },
+          { x: tile.x + tile.w - 2, y: tile.y + 2, z: 0.05 },
+          { x: tile.x + tile.w - 2, y: tile.y + tile.h - 2, z: 0.05 },
+          { x: tile.x + 2, y: tile.y + tile.h - 2, z: 0.05 },
         ],
         camX,
         camY,
         camZ,
-        camYaw
+        camYaw,
+        pitchOffset
       );
-      if (linePoly) whiteBayLines.push(linePoly.pointsStr);
-    }
+      if (poly) {
+        groundTiles.push({ pointsStr: poly.pointsStr, shade: tile.shade });
+      }
+    });
 
-    // 3. Huellas de neumáticos dobles en el cemento (como en la imagen)
-    const projectedTracks: string[] = [];
-    tireTracks.forEach((tr) => {
-      const cos = Math.cos(tr.angleRad);
-      const sin = Math.sin(tr.angleRad);
-      [-10, 10].forEach((lat) => {
-        const tx = tr.x - 18 * cos - lat * sin;
-        const ty = tr.y - 18 * sin + lat * cos;
-        const poly = projectPolygon3D(
+    // 3. Bordillos perimetrales 3D Rojos y Blancos
+    const curbPolys: { pointsStr: string; color: string }[] = [];
+    CURB_SEGMENTS.forEach((seg) => {
+      const poly = projectPolygon3D(
+        [
+          { x: seg.x1, y: seg.y1, z: 0.2 },
+          { x: seg.x2, y: seg.y1, z: 0.2 },
+          { x: seg.x2, y: seg.y2, z: 0.2 },
+          { x: seg.x1, y: seg.y2, z: 0.2 },
+        ],
+        camX,
+        camY,
+        camZ,
+        camYaw,
+        pitchOffset
+      );
+      if (poly) curbPolys.push({ pointsStr: poly.pointsStr, color: seg.color });
+    });
+
+    // 4. Marcas viales realistas: Líneas de carril segmentadas, doble línea amarilla y paso cebra
+    const whiteLaneDashes: string[] = [];
+    for (let lx = 180; lx <= WORLD_W - 180; lx += 90) {
+      [360, 620].forEach((ly) => {
+        const dash = projectPolygon3D(
           [
-            { x: tx - 4 * cos - 2 * sin, y: ty - 4 * sin + 2 * cos, z: 0.15 },
-            { x: tx + 4 * cos - 2 * sin, y: ty + 4 * sin + 2 * cos, z: 0.15 },
-            { x: tx + 4 * cos + 2 * sin, y: ty + 4 * sin - 2 * cos, z: 0.15 },
-            { x: tx - 4 * cos + 2 * sin, y: ty - 4 * sin - 2 * cos, z: 0.15 },
+            { x: lx, y: ly, z: 0.15 },
+            { x: lx + 46, y: ly, z: 0.15 },
+            { x: lx + 46, y: ly + 5, z: 0.15 },
+            { x: lx, y: ly + 5, z: 0.15 },
           ],
           camX,
           camY,
           camZ,
-          camYaw
+          camYaw,
+          pitchOffset
+        );
+        if (dash) whiteLaneDashes.push(dash.pointsStr);
+      });
+    }
+
+    // Líneas de bahías de estacionamiento superiores
+    for (let bx = 180; bx <= WORLD_W - 180; bx += 110) {
+      const bayLine = projectPolygon3D(
+        [
+          { x: bx, y: 105, z: 0.15 },
+          { x: bx + 5, y: 105, z: 0.15 },
+          { x: bx + 5, y: 265, z: 0.15 },
+          { x: bx, y: 265, z: 0.15 },
+        ],
+        camX,
+        camY,
+        camZ,
+        camYaw,
+        pitchOffset
+      );
+      if (bayLine) whiteLaneDashes.push(bayLine.pointsStr);
+    }
+
+    // Paso peatonal tipo cebra en 3D
+    for (let zy = 660; zy <= 790; zy += 24) {
+      const zebra = projectPolygon3D(
+        [
+          { x: 140, y: zy, z: 0.18 },
+          { x: 195, y: zy, z: 0.18 },
+          { x: 195, y: zy + 12, z: 0.18 },
+          { x: 140, y: zy + 12, z: 0.18 },
+        ],
+        camX,
+        camY,
+        camZ,
+        camYaw,
+        pitchOffset
+      );
+      if (zebra) whiteLaneDashes.push(zebra.pointsStr);
+    }
+
+    // 5. Huellas dobles de neumáticos sobre el asfalto
+    const projectedTracks: string[] = [];
+    tireTracks.forEach((tr) => {
+      const cos = Math.cos(tr.angleRad);
+      const sin = Math.sin(tr.angleRad);
+      [-11, 11].forEach((lat) => {
+        const tx = tr.x - 16 * cos - lat * sin;
+        const ty = tr.y - 16 * sin + lat * cos;
+        const poly = projectPolygon3D(
+          [
+            { x: tx - 5 * cos - 2.2 * sin, y: ty - 5 * sin + 2.2 * cos, z: 0.2 },
+            { x: tx + 5 * cos - 2.2 * sin, y: ty + 5 * sin + 2.2 * cos, z: 0.2 },
+            { x: tx + 5 * cos + 2.2 * sin, y: ty + 5 * sin - 2.2 * cos, z: 0.2 },
+            { x: tx - 5 * cos + 2.2 * sin, y: ty - 5 * sin - 2.2 * cos, z: 0.2 },
+          ],
+          camX,
+          camY,
+          camZ,
+          camYaw,
+          pitchOffset
         );
         if (poly) projectedTracks.push(poly.pointsStr);
       });
     });
 
-    // 4. Flechas amarillas pintadas en el pavimento (como en la imagen)
+    // 6. Flechas direccionales amarillas en el pavimento
     const yellowArrows: string[] = [];
     scenario.arrows.forEach((ar) => {
       const rad = (ar.angleDeg * Math.PI) / 180;
       const cos = Math.cos(rad);
       const sin = Math.sin(rad);
       const localArrow = [
-        { dx: 18, dy: 0 },
-        { dx: 4, dy: -11 },
-        { dx: 4, dy: -4 },
-        { dx: -16, dy: -4 },
-        { dx: -16, dy: 4 },
-        { dx: 4, dy: 4 },
-        { dx: 4, dy: 11 },
+        { dx: 28, dy: 0 },
+        { dx: 6, dy: -16 },
+        { dx: 6, dy: -6 },
+        { dx: -24, dy: -6 },
+        { dx: -24, dy: 6 },
+        { dx: 6, dy: 6 },
+        { dx: 6, dy: 16 },
       ];
       const worldPts = localArrow.map((p) => ({
         x: ar.x + p.dx * cos - p.dy * sin,
         y: ar.y + p.dx * sin + p.dy * cos,
-        z: 0.3,
+        z: 0.28,
       }));
-      const proj = projectPolygon3D(worldPts, camX, camY, camZ, camYaw);
+      const proj = projectPolygon3D(worldPts, camX, camY, camZ, camYaw, pitchOffset);
       if (proj) yellowArrows.push(proj.pointsStr);
     });
 
-    // 5. Cuadro Azul de Parqueo [ P ] pintado en el piso con borde blanco
+    // 7. Cajón Azul Oficial de Parqueo [ P ] y Poste Vertical [ P ]
     const pz = scenario.parkingZone;
     const blueParkingBox = projectPolygon3D(
       [
-        { x: pz.x, y: pz.y, z: 0.4 },
-        { x: pz.x + pz.w, y: pz.y, z: 0.4 },
-        { x: pz.x + pz.w, y: pz.y + pz.h, z: 0.4 },
-        { x: pz.x, y: pz.y + pz.h, z: 0.4 },
+        { x: pz.x, y: pz.y, z: 0.35 },
+        { x: pz.x + pz.w, y: pz.y, z: 0.35 },
+        { x: pz.x + pz.w, y: pz.y + pz.h, z: 0.35 },
+        { x: pz.x, y: pz.y + pz.h, z: 0.35 },
       ],
       camX,
       camY,
       camZ,
-      camYaw
+      camYaw,
+      pitchOffset
     );
 
-    // 6. Letrero Vertical Azul [ P ] sobre poste metálico al lado de la zona de parqueo (como en la imagen)
     const signBase = projectPoint3D(
-      { x: pz.x - 10, y: pz.y + 8, z: 0 },
+      { x: pz.x - 14, y: pz.y + 10, z: 0 },
       camX,
       camY,
       camZ,
-      camYaw
+      camYaw,
+      pitchOffset
     );
     const signTop = projectPoint3D(
-      { x: pz.x - 10, y: pz.y + 8, z: 48 },
+      { x: pz.x - 14, y: pz.y + 10, z: 62 },
       camX,
       camY,
       camZ,
-      camYaw
+      camYaw,
+      pitchOffset
     );
 
-    // 7. Conos 3D Naranja con Franjas Blancas ordenados por profundidad
-    const projectedCones: {
+    // 8. Objetos 3D Verticales ordenados por profundidad (Árboles Volumétricos, Farolas Viales y Conos 3D)
+    const renderItems: {
+      type: 'TREE' | 'LAMP' | 'CONE';
+      depth: number;
       sx: number;
       sy: number;
       scale: number;
-      depth: number;
+      tree?: TreePoint;
+      coneHit?: boolean;
     }[] = [];
 
-    scenario.cones.forEach((c) => {
-      const pt = projectPoint3D({ x: c.x, y: c.y, z: 0 }, camX, camY, camZ, camYaw);
-      if (pt && pt.sx > -40 && pt.sx < VIEW3D_W + 40) {
-        projectedCones.push(pt);
+    WORLD_TREES.forEach((tr) => {
+      const pt = projectPoint3D(
+        { x: tr.x, y: tr.y, z: 0 },
+        camX,
+        camY,
+        camZ,
+        camYaw,
+        pitchOffset
+      );
+      if (pt && pt.sx > -110 && pt.sx < VIEW3D_W + 110) {
+        renderItems.push({
+          type: 'TREE',
+          depth: pt.depth,
+          sx: pt.sx,
+          sy: pt.sy,
+          scale: pt.scale,
+          tree: tr,
+        });
       }
     });
 
-    projectedCones.sort((a, b) => b.depth - a.depth);
+    WORLD_LAMPS.forEach((lp) => {
+      const pt = projectPoint3D(
+        { x: lp.x, y: lp.y, z: 0 },
+        camX,
+        camY,
+        camZ,
+        camYaw,
+        pitchOffset
+      );
+      if (pt && pt.sx > -80 && pt.sx < VIEW3D_W + 80) {
+        renderItems.push({
+          type: 'LAMP',
+          depth: pt.depth,
+          sx: pt.sx,
+          sy: pt.sy,
+          scale: pt.scale,
+        });
+      }
+    });
+
+    scenario.cones.forEach((c, idx) => {
+      const pt = projectPoint3D(
+        { x: c.x, y: c.y, z: 0 },
+        camX,
+        camY,
+        camZ,
+        camYaw,
+        pitchOffset
+      );
+      if (pt && pt.sx > -60 && pt.sx < VIEW3D_W + 60) {
+        renderItems.push({
+          type: 'CONE',
+          depth: pt.depth,
+          sx: pt.sx,
+          sy: pt.sy,
+          scale: pt.scale,
+          coneHit: hitConeIndices.includes(idx),
+        });
+      }
+    });
+
+    renderItems.sort((a, b) => b.depth - a.depth);
 
     return {
-      concretePlaza,
-      whiteBayLines,
+      asphaltBase,
+      groundTiles,
+      curbPolys,
+      whiteLaneDashes,
       projectedTracks,
       yellowArrows,
       blueParkingBox,
       signBase,
       signTop,
-      projectedCones,
+      renderItems,
     };
-  }, [carState.angleRad, carState.x, carState.y, scenario, tireTracks]);
+  }, [carState.angleRad, carState.x, carState.y, hitConeIndices, scenario, tireTracks]);
 
   const leftBlinkOn = (turnSignal === 'LEFT' || turnSignal === 'HAZARD') && blinkTick;
   const rightBlinkOn = (turnSignal === 'RIGHT' || turnSignal === 'HAZARD') && blinkTick;
+  const currentGearSpec = GEAR_SPECS[gear];
+  const horizonPanOffset = Math.round(((carState.angleRad * 180) / Math.PI) * 2.4) % 240;
+
+  // Contenedor adaptable: si el celular está en vertical (winH > winW), rota automáticamente 90° a formato horizontal completo
+  const landscapeContainerStyle = isPortraitScreen
+    ? {
+        width: winH,
+        height: winW,
+        transform: [{ rotate: '90deg' as const }],
+      }
+    : {
+        width: winW,
+        height: winH,
+      };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
-      <TelemetryHeader
-        title="SIMULADOR DE CONDUCCIÓN 3D (PISTA OFICIAL)"
-        subtitle="Estacione el Sedán Blanco en la Zona Azul [P] evitando los conos"
-        moduleCode="MOD-03"
-        showBack
-      />
-
-      <View style={styles.mainContainer}>
-        {/* BARRA SUPERIOR: NIVEL PREOPERACIONAL + LOS 3 NIVELES DE CONDUCCIÓN + MÉTRICAS */}
-        <View style={styles.topHudBar}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.scenarioTabs}>
-            <Pressable
-              onPress={() => router.push('/preoperational')}
-              style={[
-                styles.scenarioTab,
-                styles.preopTabBadge,
-                preoperationalResult && { borderColor: PsychoPalette.mint },
-              ]}>
-              <Ionicons
-                name="construct"
-                size={12}
-                color={preoperationalResult ? PsychoPalette.mint : PsychoPalette.amberWarning}
-              />
-              <Text
-                style={[
-                  styles.scenarioTabText,
-                  {
-                    color: preoperationalResult ? PsychoPalette.mint : PsychoPalette.amberWarning,
-                  },
-                ]}>
-                0. PREOPERACIONAL
-              </Text>
+    <View style={styles.outerRoot}>
+      <SafeAreaView style={[styles.landscapeWrapper, landscapeContainerStyle]} edges={['left', 'right']}>
+        {/* BARRA SUPERIOR HORIZONTAL COMPACTA PARA CELULAR */}
+        <View style={styles.compactTopBar}>
+          <View style={styles.leftNavGroup}>
+            <Pressable onPress={() => router.back()} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={14} color={PsychoPalette.textPrimary} />
+              <Text style={styles.backBtnText}>SALIR</Text>
             </Pressable>
 
-            {SCENARIOS.map((sc) => {
-              const active = scenario.id === sc.id;
-              return (
-                <Pressable
-                  key={sc.id}
-                  onPress={() => handleSelectScenario(sc)}
-                  style={[styles.scenarioTab, active && styles.scenarioTabActive]}>
-                  <Text style={[styles.scenarioTabText, active && styles.scenarioTabTextActive]}>
-                    {sc.shortLabel}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.scenarioTabs}>
+              <Pressable
+                onPress={() => router.push('/preoperational')}
+                style={[
+                  styles.scenarioTab,
+                  styles.preopTabBadge,
+                  preoperationalResult && { borderColor: PsychoPalette.mint },
+                ]}>
+                <Ionicons
+                  name="construct"
+                  size={11}
+                  color={preoperationalResult ? PsychoPalette.mint : PsychoPalette.amberWarning}
+                />
+                <Text
+                  style={[
+                    styles.scenarioTabText,
+                    {
+                      color: preoperationalResult ? PsychoPalette.mint : PsychoPalette.amberWarning,
+                    },
+                  ]}>
+                  0. PREOP
+                </Text>
+              </Pressable>
+
+              {SCENARIOS.map((sc) => {
+                const active = scenario.id === sc.id;
+                return (
+                  <Pressable
+                    key={sc.id}
+                    onPress={() => handleSelectScenario(sc)}
+                    style={[styles.scenarioTab, active && styles.scenarioTabActive]}>
+                    <Text style={[styles.scenarioTabText, active && styles.scenarioTabTextActive]}>
+                      {sc.shortLabel}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
 
           <View style={styles.telemetryStrip}>
             <View style={styles.statBadge}>
@@ -860,13 +1352,13 @@ export default function ManeuversSimulatorScreen() {
             </View>
 
             <Pressable onPress={() => resetScenario(scenario)} style={styles.resetSimBtn}>
-              <Ionicons name="refresh" size={13} color={PsychoPalette.bgPrimary} />
+              <Ionicons name="refresh" size={12} color={PsychoPalette.bgPrimary} />
               <Text style={styles.resetSimBtnText}>REINICIAR</Text>
             </Pressable>
           </View>
         </View>
 
-        {/* ==================== ESCENARIO 3D ESTILO IMAGEN DE REFERENCIA ==================== */}
+        {/* ==================== VISOR 3D HORIZONTAL EN PRIMERA PERSONA (SIN RETROVISORES, ENTORNO AMPLIADO Y PISO REALISTA) ==================== */}
         <View
           style={[
             styles.viewportContainer,
@@ -879,103 +1371,169 @@ export default function ManeuversSimulatorScreen() {
             viewBox={`0 0 ${VIEW3D_W} ${VIEW3D_H}`}
             preserveAspectRatio="none">
             <Defs>
-              {/* Cielo azul diurno brillante igual a la imagen */}
-              <LinearGradient id="daySkyGrad" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#0284C7" />
-                <Stop offset="0.6" stopColor="#38BDF8" />
-                <Stop offset="1" stopColor="#BAE6FD" />
+              {/* Gradiente de cielo realista con atmósfera */}
+              <LinearGradient id="realisticSkyGrad" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#0369A1" />
+                <Stop offset="0.48" stopColor="#0EA5E9" />
+                <Stop offset="0.82" stopColor="#7DD3FC" />
+                <Stop offset="1" stopColor="#E0F2FE" />
               </LinearGradient>
 
-              {/* Pavimento de cemento gris de la explanada */}
-              <LinearGradient id="concreteFloorGrad" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#94A3B8" />
-                <Stop offset="0.5" stopColor="#78879B" />
-                <Stop offset="1" stopColor="#64748B" />
+              {/* Resplandor solar en el cielo */}
+              <RadialGradient id="sunGlowGrad" cx="0.78" cy="0.22" r="0.25">
+                <Stop offset="0" stopColor="#FEF08A" stopOpacity="0.95" />
+                <Stop offset="0.35" stopColor="#FDE047" stopOpacity="0.45" />
+                <Stop offset="1" stopColor="#38BDF8" stopOpacity="0" />
+              </RadialGradient>
+
+              {/* Terreno ecológico exterior con profundidad */}
+              <LinearGradient id="realisticGrassGrad" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#15803D" />
+                <Stop offset="0.35" stopColor="#166534" />
+                <Stop offset="1" stopColor="#052E16" />
               </LinearGradient>
 
-              {/* Gradiente perlado de la carrocería del Sedán Blanco */}
-              <LinearGradient id="whiteCarBodyGrad" x1="0" y1="0" x2="1" y2="1">
-                <Stop offset="0" stopColor="#FFFFFF" />
-                <Stop offset="0.65" stopColor="#F1F5F9" />
-                <Stop offset="1" stopColor="#CBD5E1" />
+              {/* Base de asfalto multicapa realista */}
+              <LinearGradient id="asphaltRoadGrad" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#475569" />
+                <Stop offset="0.35" stopColor="#334155" />
+                <Stop offset="0.75" stopColor="#1E293B" />
+                <Stop offset="1" stopColor="#0F172A" />
+              </LinearGradient>
+
+              {/* Capó delantero esculpido en 3D */}
+              <LinearGradient id="hoodMetallicGrad" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#F8FAFC" />
+                <Stop offset="0.5" stopColor="#E2E8F0" />
+                <Stop offset="1" stopColor="#94A3B8" />
+              </LinearGradient>
+
+              {/* Salpicadero de fibra/cuero oscuro en 1ª persona */}
+              <LinearGradient id="cockpitDashGrad" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor="#1E293B" />
+                <Stop offset="0.35" stopColor="#0F172A" />
+                <Stop offset="1" stopColor="#020617" />
               </LinearGradient>
             </Defs>
 
-            {/* 1. CIELO DIURNO Y RASCACIELOS DE FONDO (COMO EN LA IMAGEN) */}
-            <Rect x={0} y={0} width={VIEW3D_W} height={HORIZON_Y} fill="url(#daySkyGrad)" />
+            {/* 1. CIELO REALISTA, SOL, CORDILLERA Y HORIZONTE URBANO */}
+            <Rect x={0} y={0} width={VIEW3D_W} height={HORIZON_Y} fill="url(#realisticSkyGrad)" />
+            <Rect x={0} y={0} width={VIEW3D_W} height={HORIZON_Y} fill="url(#sunGlowGrad)" />
+            <Circle cx={748} cy={32} r={18} fill="#FEF9C3" />
 
-            {/* Rascacielos 1 (Izquierda) */}
-            <Rect x={12} y={8} width={96} height={HORIZON_Y - 8} fill="#94A3B8" stroke="#475569" strokeWidth={1.5} />
-            {[18, 32, 46, 60, 74, 88].map((wy) => (
-              <Line key={wy} x1={18} y1={wy} x2={102} y2={wy} stroke="#E2E8F0" strokeWidth={4} strokeDasharray="10 4" />
-            ))}
+            {/* Cordillera lejana con perspectiva atmosférica */}
+            <Path
+              d={`M 0 ${HORIZON_Y} L 95 ${HORIZON_Y - 48} L 210 ${HORIZON_Y - 22} L 345 ${HORIZON_Y - 58} L 490 ${HORIZON_Y - 18} L 640 ${HORIZON_Y - 52} L 790 ${HORIZON_Y - 26} L ${VIEW3D_W} ${HORIZON_Y - 44} L ${VIEW3D_W} ${HORIZON_Y} Z`}
+              fill="#0284C7"
+              opacity={0.35}
+            />
+            <Path
+              d={`M 0 ${HORIZON_Y} Q 180 ${HORIZON_Y - 38} 360 ${HORIZON_Y - 14} T 720 ${HORIZON_Y - 34} T ${VIEW3D_W} ${HORIZON_Y - 18} L ${VIEW3D_W} ${HORIZON_Y} Z`}
+              fill="#15803D"
+              opacity={0.82}
+            />
 
-            {/* Rascacielos 2 (Torre Alta Central-Izquierda) */}
-            <Rect x={135} y={2} width={118} height={HORIZON_Y - 2} fill="#64748B" stroke="#334155" strokeWidth={1.5} />
-            {[14, 26, 38, 50, 62, 74, 86, 98].map((wy) => (
-              <Line key={wy} x1={142} y1={wy} x2={246} y2={wy} stroke="#BAE6FD" strokeWidth={3.5} strokeDasharray="12 5" />
-            ))}
+            {/* Skyline 3D con edificios sombreados y complejo AutoTest */}
+            <G transform={`translate(${-horizonPanOffset * 0.65}, 0)`}>
+              {/* Nubes volumétricas */}
+              <Ellipse cx={180} cy={30} rx={64} ry={14} fill="rgba(255,255,255,0.82)" />
+              <Ellipse cx={215} cy={25} rx={45} ry={16} fill="rgba(255,255,255,0.9)" />
+              <Ellipse cx={540} cy={34} rx={72} ry={14} fill="rgba(255,255,255,0.78)" />
 
-            {/* Edificio Blanco Central */}
-            <Rect x={268} y={26} width={72} height={HORIZON_Y - 26} fill="#E2E8F0" stroke="#94A3B8" strokeWidth={1} />
-            {[36, 48, 60, 72, 84, 96].map((wy) => (
-              <Line key={wy} x1={274} y1={wy} x2={334} y2={wy} stroke="#64748B" strokeWidth={3} strokeDasharray="6 4" />
-            ))}
+              {/* Edificio 3D 1 con cara iluminada y cara en sombra */}
+              <Rect x={70} y={22} width={68} height={HORIZON_Y - 22} fill="#CBD5E1" stroke="#475569" strokeWidth={1} />
+              <Rect x={138} y={22} width={24} height={HORIZON_Y - 22} fill="#64748B" stroke="#475569" strokeWidth={1} />
+              {[34, 48, 62, 76, 90, 104, 118].map((wy) => (
+                <Line key={wy} x1={76} y1={wy} x2={130} y2={wy} stroke="#38BDF8" strokeWidth={3.5} strokeDasharray="8 4" />
+              ))}
 
-            {/* Rascacielos 3 y 4 (Derecha con sombra diagonal como en la imagen) */}
-            <Rect x={485} y={4} width={110} height={HORIZON_Y - 4} fill="#94A3B8" stroke="#475569" strokeWidth={1.5} />
-            <Polygon points={`515,4 595,4 595,${HORIZON_Y} 495,${HORIZON_Y}`} fill="rgba(30, 41, 59, 0.45)" />
-            <Rect x={605} y={10} width={105} height={HORIZON_Y - 10} fill="#64748B" stroke="#334155" strokeWidth={1.5} />
+              {/* Torre Corporativa 3D 2 */}
+              <Rect x={210} y={10} width={86} height={HORIZON_Y - 10} fill="#94A3B8" stroke="#334155" strokeWidth={1} />
+              <Rect x={296} y={10} width={28} height={HORIZON_Y - 10} fill="#475569" stroke="#334155" strokeWidth={1} />
+              {[22, 36, 50, 64, 78, 92, 106, 120].map((wy) => (
+                <Line key={wy} x1={218} y1={wy} x2={288} y2={wy} stroke="#E0F2FE" strokeWidth={3} strokeDasharray="10 4" />
+              ))}
 
-            {/* Tienda Roja "Stop Shop / AutoTest" en el horizonte (igual a la imagen) */}
-            <Rect x={252} y={78} width={225} height={44} fill="#334155" stroke="#1E293B" strokeWidth={1.5} />
-            <Rect x={248} y={74} width={233} height={15} rx={2} fill="#EF4444" stroke="#FFFFFF" strokeWidth={1} />
-            <SvgText x={295} y={85} fill="#FFFFFF" fontSize="10" fontWeight="bold">
-              Stop Shop • AutoTest
-            </SvgText>
+              {/* Sede Central Centro de Evaluación Vial AutoTest */}
+              <Rect x={390} y={84} width={230} height={52} fill="#1E293B" stroke="#0F172A" strokeWidth={1.5} />
+              <Rect x={384} y={76} width={242} height={16} rx={3} fill="#EF4444" stroke="#FFFFFF" strokeWidth={1.2} />
+              <SvgText x={505} y={88} fill="#FFFFFF" fontSize="10.5" fontWeight="bold" textAnchor="middle">
+                CENTRO VIAL • AUTOTEST 3D
+              </SvgText>
 
-            {/* Muro perimetral con pilares beige y rejas */}
-            <Rect x={0} y={HORIZON_Y - 14} width={VIEW3D_W} height={16} fill="#C2B280" stroke="#78716C" strokeWidth={1} />
+              {/* Torres Derecha */}
+              <Rect x={680} y={18} width={92} height={HORIZON_Y - 18} fill="#CBD5E1" stroke="#475569" strokeWidth={1} />
+              <Rect x={772} y={18} width={28} height={HORIZON_Y - 18} fill="#64748B" stroke="#475569" strokeWidth={1} />
+              <Rect x={835} y={28} width={88} height={HORIZON_Y - 28} fill="#94A3B8" stroke="#334155" strokeWidth={1} />
+            </G>
 
-            {/* 2. PISO DE CEMENTO GRIS DE LA EXPLANADA */}
+            {/* 2. PISO REALISTA MULTICAPA: PRADERA + BASE ASFÁLTICA + LOSAS EN PERSPECTIVA 3D */}
             <Rect
               x={0}
               y={HORIZON_Y}
               width={VIEW3D_W}
               height={VIEW3D_H - HORIZON_Y}
-              fill="url(#concreteFloorGrad)"
+              fill="url(#realisticGrassGrad)"
             />
-            {world3D.concretePlaza ? (
-              <Polygon points={world3D.concretePlaza.pointsStr} fill="url(#concreteFloorGrad)" />
+
+            {world3D.asphaltBase ? (
+              <Polygon
+                points={world3D.asphaltBase.pointsStr}
+                fill="url(#asphaltRoadGrad)"
+                stroke="#94A3B8"
+                strokeWidth={2}
+              />
             ) : null}
 
-            {/* Líneas blancas de estacionamiento */}
-            {world3D.whiteBayLines.map((pts, i) => (
-              <Polygon key={i} points={pts} fill="rgba(255, 255, 255, 0.65)" />
-            ))}
-
-            {/* 3. HUELLAS DE NEUMÁTICOS SOBRE EL PAVIMENTO */}
-            {world3D.projectedTracks.map((pts, i) => (
-              <Polygon key={i} points={pts} fill="rgba(51, 65, 85, 0.38)" />
-            ))}
-
-            {/* 4. FLECHAS AMARILLAS PINTADAS EN EL SUELO (COMO EN LA IMAGEN) */}
-            {world3D.yellowArrows.map((pts, i) => (
+            {/* Losas de pavimento y concreto con juntas de dilatación en 3D */}
+            {world3D.groundTiles.map((t, idx) => (
               <Polygon
-                key={i}
-                points={pts}
-                fill="#FACC15"
-                stroke="#CA8A04"
-                strokeWidth={1}
+                key={`tile-${idx}`}
+                points={t.pointsStr}
+                fill={t.shade}
+                stroke="rgba(15, 23, 42, 0.35)"
+                strokeWidth={0.8}
               />
             ))}
 
-            {/* 5. CUADRO AZUL DE PARQUEO [ P ] EN EL PISO CON BORDE BLANCO */}
+            {/* Bordillos perimetrales 3D Rojos y Blancos */}
+            {world3D.curbPolys.map((cb, idx) => (
+              <Polygon
+                key={`curb-${idx}`}
+                points={cb.pointsStr}
+                fill={cb.color}
+                stroke="#0F172A"
+                strokeWidth={0.6}
+              />
+            ))}
+
+            {/* Marcas viales blancas (carriles, bahías y paso cebra) */}
+            {world3D.whiteLaneDashes.map((pts, i) => (
+              <Polygon key={`lane-${i}`} points={pts} fill="rgba(248, 250, 252, 0.82)" />
+            ))}
+
+            {/* 3. HUELLAS REALISTAS DE NEUMÁTICOS */}
+            {world3D.projectedTracks.map((pts, i) => (
+              <Polygon key={`trk-${i}`} points={pts} fill="rgba(2, 6, 23, 0.45)" />
+            ))}
+
+            {/* 4. FLECHAS DIRECCIONALES AMARILLAS EN EL PISO */}
+            {world3D.yellowArrows.map((pts, i) => (
+              <Polygon
+                key={`arr-${i}`}
+                points={pts}
+                fill="#FACC15"
+                stroke="#CA8A04"
+                strokeWidth={1.2}
+              />
+            ))}
+
+            {/* 5. ZONA AZUL OFICIAL DE PARQUEO [ P ] */}
             {world3D.blueParkingBox ? (
               <G>
                 <Polygon
                   points={world3D.blueParkingBox.pointsStr}
-                  fill={parkedSuccess ? '#10B981' : '#0284C7'}
+                  fill={parkedSuccess ? 'rgba(16, 185, 129, 0.88)' : 'rgba(2, 132, 199, 0.85)'}
                   stroke="#FFFFFF"
                   strokeWidth={3.5}
                 />
@@ -991,7 +1549,7 @@ export default function ManeuversSimulatorScreen() {
               </G>
             ) : null}
 
-            {/* 6. LETRERO VERTICAL AZUL [ P ] SOBRE POSTE METÁLICO (COMO EN LA IMAGEN) */}
+            {/* 6. POSTE Y SEÑAL VERTICAL [ P ] */}
             {world3D.signBase && world3D.signTop ? (
               <G>
                 <Line
@@ -999,7 +1557,7 @@ export default function ManeuversSimulatorScreen() {
                   y1={world3D.signBase.sy}
                   x2={world3D.signTop.sx}
                   y2={world3D.signTop.sy}
-                  stroke="#E2E8F0"
+                  stroke="#CBD5E1"
                   strokeWidth={5}
                 />
                 <Rect
@@ -1007,7 +1565,7 @@ export default function ManeuversSimulatorScreen() {
                   y={world3D.signTop.sy - 46}
                   width={48}
                   height={48}
-                  rx={5}
+                  rx={6}
                   fill="#0284C7"
                   stroke="#FFFFFF"
                   strokeWidth={2.5}
@@ -1016,7 +1574,7 @@ export default function ManeuversSimulatorScreen() {
                   x={world3D.signTop.sx}
                   y={world3D.signTop.sy - 12}
                   fill="#FFFFFF"
-                  fontSize="32"
+                  fontSize="30"
                   fontWeight="bold"
                   textAnchor="middle">
                   P
@@ -1024,167 +1582,252 @@ export default function ManeuversSimulatorScreen() {
               </G>
             ) : null}
 
-            {/* 7. CONOS DE TRÁFICO NARANJAS CON FRANJAS BLANCAS EN 3D */}
-            {world3D.projectedCones.map((c, idx) => {
-              const s = Math.max(0.38, Math.min(1.65, c.scale * 0.42));
-              const cx = c.sx;
-              const cy = c.sy;
+            {/* 7. ELEMENTOS 3D VOLUMÉTRICOS: ÁRBOLES REALISTAS, FAROLAS VIALES Y CONOS SOMBREADOS */}
+            {world3D.renderItems.map((item, idx) => {
+              if (item.type === 'TREE' && item.tree) {
+                const s = Math.max(0.24, Math.min(2.4, item.scale * 0.62));
+                const tx = item.sx;
+                const ty = item.sy;
+                return (
+                  <G key={`tree-${idx}`}>
+                    {/* Sombra proyectada sobre el terreno */}
+                    <Ellipse cx={tx + 4 * s} cy={ty + 2 * s} rx={24 * s} ry={8 * s} fill="rgba(2, 6, 23, 0.42)" />
+                    {/* Tronco con corteza sombreada */}
+                    <Rect
+                      x={tx - 5 * s}
+                      y={ty - 36 * s}
+                      width={10 * s}
+                      height={37 * s}
+                      rx={2.5 * s}
+                      fill="#5C2D0C"
+                    />
+                    <Rect
+                      x={tx - 5 * s}
+                      y={ty - 36 * s}
+                      width={4 * s}
+                      height={37 * s}
+                      fill="#92400E"
+                    />
+                    {/* Follaje volumétrico en 4 capas (sombra base, tono medio e iluminación solar) */}
+                    <Circle cx={tx} cy={ty - 40 * s} r={22 * s} fill={item.tree.canopyDark} />
+                    <Circle cx={tx - 13 * s} cy={ty - 34 * s} r={15 * s} fill={item.tree.canopyMid} />
+                    <Circle cx={tx + 12 * s} cy={ty - 34 * s} r={15 * s} fill={item.tree.canopyDark} />
+                    <Circle cx={tx - 3 * s} cy={ty - 46 * s} r={16 * s} fill={item.tree.canopyMid} />
+                    <Circle cx={tx - 6 * s} cy={ty - 50 * s} r={11 * s} fill={item.tree.canopyLight} />
+                  </G>
+                );
+              }
+
+              if (item.type === 'LAMP') {
+                const s = Math.max(0.25, Math.min(2.1, item.scale * 0.65));
+                const lx = item.sx;
+                const ly = item.sy;
+                return (
+                  <G key={`lamp-${idx}`}>
+                    <Ellipse cx={lx} cy={ly + 1 * s} rx={8 * s} ry={3 * s} fill="rgba(2, 6, 23, 0.4)" />
+                    <Line
+                      x1={lx}
+                      y1={ly}
+                      x2={lx}
+                      y2={ly - 68 * s}
+                      stroke="#94A3B8"
+                      strokeWidth={3.5 * s}
+                    />
+                    <Line
+                      x1={lx}
+                      y1={ly - 68 * s}
+                      x2={lx + 18 * s}
+                      y2={ly - 72 * s}
+                      stroke="#CBD5E1"
+                      strokeWidth={2.5 * s}
+                    />
+                    <Ellipse
+                      cx={lx + 19 * s}
+                      cy={ly - 71 * s}
+                      rx={5 * s}
+                      ry={2.5 * s}
+                      fill="#FEF08A"
+                    />
+                  </G>
+                );
+              }
+
+              // Cono 3D con sombreado lateral y bandas reflectivas
+              const s = Math.max(0.32, Math.min(1.9, item.scale * 0.48));
+              const cx = item.sx;
+              const cy = item.sy;
               return (
-                <G key={idx}>
-                  {/* Sombra y base roja/naranja del cono */}
-                  <Ellipse cx={cx} cy={cy + 2 * s} rx={15 * s} ry={6 * s} fill="rgba(15, 23, 42, 0.35)" />
-                  <Ellipse cx={cx} cy={cy} rx={14 * s} ry={5.5 * s} fill="#EA580C" stroke="#9A3412" strokeWidth={1} />
-                  {/* Cuerpo cónico naranja */}
+                <G
+                  key={`cone-${idx}`}
+                  transform={item.coneHit ? `rotate(32, ${cx}, ${cy})` : undefined}>
+                  <Ellipse cx={cx + 3 * s} cy={cy + 2 * s} rx={16 * s} ry={6 * s} fill="rgba(2, 6, 23, 0.45)" />
+                  {/* Base cuadrada 3D del cono */}
                   <Polygon
-                    points={`${cx - 11 * s},${cy} ${cx - 3.5 * s},${cy - 34 * s} ${cx + 3.5 * s},${cy - 34 * s} ${cx + 11 * s},${cy}`}
-                    fill="#F97316"
-                    stroke="#C2410C"
+                    points={`${cx - 15 * s},${cy} ${cx},${cy - 5 * s} ${cx + 15 * s},${cy} ${cx},${cy + 5 * s}`}
+                    fill="#C2410C"
+                    stroke="#7C2D12"
                     strokeWidth={0.8}
                   />
-                  {/* Franja blanca reflectiva inferior */}
+                  {/* Cuerpo cónico mitad iluminada / mitad sombra */}
                   <Polygon
-                    points={`${cx - 9 * s},${cy - 7 * s} ${cx - 7 * s},${cy - 14 * s} ${cx + 7 * s},${cy - 14 * s} ${cx + 9 * s},${cy - 7 * s}`}
-                    fill="#FFFFFF"
+                    points={`${cx - 11 * s},${cy} ${cx - 3.2 * s},${cy - 35 * s} ${cx},${cy - 35 * s} ${cx},${cy}`}
+                    fill="#FB923C"
                   />
-                  {/* Franja blanca reflectiva superior */}
                   <Polygon
-                    points={`${cx - 6 * s},${cy - 20 * s} ${cx - 4.3 * s},${cy - 27 * s} ${cx + 4.3 * s},${cy - 27 * s} ${cx + 6 * s},${cy - 20 * s}`}
-                    fill="#FFFFFF"
+                    points={`${cx},${cy} ${cx},${cy - 35 * s} ${cx + 3.2 * s},${cy - 35 * s} ${cx + 11 * s},${cy}`}
+                    fill="#EA580C"
+                  />
+                  {/* Bandas reflectivas blancas */}
+                  <Polygon
+                    points={`${cx - 8.8 * s},${cy - 8 * s} ${cx - 6.8 * s},${cy - 15 * s} ${cx + 6.8 * s},${cy - 15 * s} ${cx + 8.8 * s},${cy - 8 * s}`}
+                    fill="#F8FAFC"
+                  />
+                  <Polygon
+                    points={`${cx - 5.8 * s},${cy - 21 * s} ${cx - 4.1 * s},${cy - 28 * s} ${cx + 4.1 * s},${cy - 28 * s} ${cx + 5.8 * s},${cy - 21 * s}`}
+                    fill="#F8FAFC"
                   />
                 </G>
               );
             })}
 
-            {/* 8. SEDÁN BLANCO 3D EN TERCERA PERSONA (IDÉNTICO AL CARRO "KNIGHTS" DE LA IMAGEN) */}
-            <G transform={`translate(${VIEW3D_W * 0.56}, ${VIEW3D_H * 0.67}) rotate(${steerAngleDeg * 0.28})`}>
-              {/* Huellas de llantas inmediatas bajo el carro */}
-              <Line x1={-66} y1={15} x2={-38} y2={140} stroke="rgba(51, 65, 85, 0.42)" strokeWidth={18} strokeDasharray="4 2" />
-              <Line x1={68} y1={15} x2={96} y2={140} stroke="rgba(51, 65, 85, 0.42)" strokeWidth={18} strokeDasharray="4 2" />
-
-              {/* Sombra 3D bajo el Sedán Blanco */}
+            {/* ==================== CABINA EN 1ª PERSONA SIN RETROVISORES (VISTA AMPLIA Y DESPEJADA) ==================== */}
+            {/* CAPÓ DELANTERO ESCULPIDO EN 3D */}
+            <G transform={`translate(${steerAngleDeg * -0.45}, ${gasActive ? -2.5 : brakeActive ? 3.5 : 0})`}>
               <Polygon
-                points="-96,-82 78,-88 106,58 -82,66"
-                fill="rgba(15, 23, 42, 0.48)"
-              />
-
-              {/* Rueda Delantera Izquierda (Gira con el volante) */}
-              <G transform={`translate(-84, -52) rotate(${steerAngleDeg * 0.65})`}>
-                <Rect x={-8} y={-20} width={16} height={40} rx={5} fill="#0F172A" stroke="#94A3B8" strokeWidth={2} />
-                <Ellipse cx={-6} cy={0} rx={4} ry={13} fill="#E2E8F0" />
-              </G>
-
-              {/* Rueda Trasera Izquierda */}
-              <G transform="translate(-76, 26)">
-                <Rect x={-8} y={-20} width={16} height={40} rx={5} fill="#0F172A" stroke="#94A3B8" strokeWidth={2} />
-                <Ellipse cx={-6} cy={0} rx={4} ry={13} fill="#E2E8F0" />
-              </G>
-
-              {/* Carrocería Principal del Sedán Blanco */}
-              <Polygon
-                points="-82,-76 66,-82 94,42 84,58 -68,64 -82,46"
-                fill="url(#whiteCarBodyGrad)"
+                points={`165,328 275,266 685,266 795,328`}
+                fill="url(#hoodMetallicGrad)"
                 stroke="#94A3B8"
                 strokeWidth={2}
               />
-
-              {/* Costado Izquierdo en perspectiva con ventanas laterales y espejo */}
-              <Polygon
-                points="-82,-70 -56,-84 -42,10 -74,38"
-                fill="#E2E8F0"
-                stroke="#94A3B8"
-                strokeWidth={1.5}
-              />
-              {/* Ventanas laterales izquierdas polarizadas */}
-              <Polygon
-                points="-74,-58 -54,-72 -48,-12 -70,4"
-                fill="#0F172A"
-                stroke="#CBD5E1"
-                strokeWidth={2}
-              />
-              <Line x1={-61} y1={-66} x2={-59} y2={-4} stroke="#E2E8F0" strokeWidth={2.5} />
-
-              {/* Espejo retrovisor lateral izquierdo del sedán */}
-              <Ellipse cx={-82} cy={-56} rx={9} ry={5} fill="#FFFFFF" stroke="#64748B" strokeWidth={1.5} />
-
-              {/* Techo Blanco con Sunroof Negro Panorámico */}
-              <Polygon
-                points="-54,-78 48,-82 64,-8 -42,-4"
-                fill="#F8FAFC"
-                stroke="#CBD5E1"
-                strokeWidth={1.5}
-              />
-              {/* Quemacocos / Sunroof Negro */}
-              <Polygon
-                points="-44,-70 36,-73 42,-48 -40,-45"
-                fill="#0F172A"
-                stroke="#475569"
-                strokeWidth={1.5}
-              />
-
-              {/* Parabrisas Trasero Polarizado */}
-              <Polygon
-                points="-40,-38 56,-42 70,4 -32,8"
-                fill="#1E293B"
-                stroke="#0F172A"
-                strokeWidth={3}
-              />
-
-              {/* Faros Traseros Rojos LED (Izquierdo y Derecho como en la imagen) */}
-              <Polygon
-                points="-66,18 -26,22 -24,36 -66,34"
-                fill={brakeActive ? '#FF1E42' : '#DC2626'}
-                stroke="#7F1D1D"
-                strokeWidth={1.5}
-              />
-              <Polygon
-                points="-60,22 -32,25 -32,31 -60,29"
-                fill={gear === 'R' ? '#FFFFFF' : leftBlinkOn ? '#FACC15' : '#F97316'}
-              />
-
-              <Polygon
-                points="46,14 86,10 88,24 48,28"
-                fill={brakeActive ? '#FF1E42' : '#DC2626'}
-                stroke="#7F1D1D"
-                strokeWidth={1.5}
-              />
-              <Polygon
-                points="52,18 80,15 80,21 52,24"
-                fill={gear === 'R' ? '#FFFFFF' : rightBlinkOn ? '#FACC15' : '#F97316'}
-              />
-
-              {/* Placa Trasera "KNIGHTS" idéntica a la imagen */}
-              <Rect x={-16} y={24} width={52} height={16} rx={2} fill="#FFFFFF" stroke="#1E293B" strokeWidth={1.5} />
-              <SvgText x={10} y={36} fill="#0F172A" fontSize="9.5" fontWeight="bold" textAnchor="middle">
-                KNIGHTS
-              </SvgText>
-
-              {/* Parachoques trasero con moldura negra y doble escape */}
-              <Line x1={-62} y1={48} x2={82} y2={42} stroke="#1E293B" strokeWidth={3.5} />
-              <Rect x={-64} y={54} width={148} height={8} rx={4} fill="#1E293B" />
-              <Ellipse cx={-48} cy={58} rx={7} ry={3} fill="#94A3B8" stroke="#0F172A" strokeWidth={1} />
-              <Ellipse cx={68} cy={54} rx={7} ry={3} fill="#94A3B8" stroke="#0F172A" strokeWidth={1} />
+              {/* Nervaduras aerodinámicas del capó */}
+              <Line x1={255} y1={324} x2={325} y2={270} stroke="#CBD5E1" strokeWidth={2.5} />
+              <Line x1={705} y1={324} x2={635} y2={270} stroke="#CBD5E1" strokeWidth={2.5} />
+              <Ellipse cx={480} cy={278} rx={14} ry={4.5} fill="#38BDF8" stroke="#0F172A" strokeWidth={1} />
             </G>
+
+            {/* LIMPIAPARABRISAS ANIMADOS */}
+            <G transform={`rotate(${-wiperAngle}, 250, 326)`}>
+              <Line x1={250} y1={326} x2={115} y2={296} stroke="#0F172A" strokeWidth={4.5} strokeLinecap="round" />
+            </G>
+            <G transform={`rotate(${-wiperAngle}, 610, 326)`}>
+              <Line x1={610} y1={326} x2={465} y2={296} stroke="#0F172A" strokeWidth={4.5} strokeLinecap="round" />
+            </G>
+
+            {/* PARALES DELANTEROS (PILARES A) ESTILIZADOS EN LOS BORDES DEL PARABRISAS */}
+            <Polygon points="0,0 58,0 24,335 0,335" fill="#0F172A" stroke="#334155" strokeWidth={2} />
+            <Polygon
+              points={`${VIEW3D_W},0 ${VIEW3D_W - 58},0 ${VIEW3D_W - 24},335 ${VIEW3D_W},335`}
+              fill="#0F172A"
+              stroke="#334155"
+              strokeWidth={2}
+            />
+
+            {/* SALPICADERO Y TABLERO DE INSTRUMENTOS EN PRIMERA PERSONA */}
+            <Path
+              d={`M 0 324 Q 240 302 480 308 Q 720 302 ${VIEW3D_W} 324 L ${VIEW3D_W} ${VIEW3D_H} L 0 ${VIEW3D_H} Z`}
+              fill="url(#cockpitDashGrad)"
+              stroke="#334155"
+              strokeWidth={2}
+            />
+
+            {/* Cúpula de instrumentos detrás de la caja de dirección */}
+            <Path
+              d="M 36 324 Q 190 272 344 324 L 344 420 L 36 420 Z"
+              fill="#020617"
+              stroke="#475569"
+              strokeWidth={2.5}
+            />
+
+            {/* Tacómetro (RPM x1000) */}
+            <Circle cx={118} cy={364} r={34} fill="#0F172A" stroke="#38BDF8" strokeWidth={2} />
+            <SvgText x={118} y={352} fill="#94A3B8" fontSize="7.5" fontWeight="bold" textAnchor="middle">
+              RPM x1000
+            </SvgText>
+            <SvgText
+              x={118}
+              y={370}
+              fill={carState.rpm > 5200 ? '#EF4444' : '#38BDF8'}
+              fontSize="14"
+              fontWeight="bold"
+              textAnchor="middle">
+              {(carState.rpm / 1000).toFixed(1)}
+            </SvgText>
+            <SvgText x={118} y={382} fill="#64748B" fontSize="7" fontWeight="bold" textAnchor="middle">
+              {clutchActive ? 'EMBRAGUE' : engineOn ? 'MOTOR ON' : 'OFF'}
+            </SvgText>
+
+            {/* Indicador Digital de Marcha Actual (R, N, 1, 2, 3, 4, 5) */}
+            <Rect
+              x={168}
+              y={334}
+              width={42}
+              height={52}
+              rx={7}
+              fill="#0F172A"
+              stroke={gear === 'R' ? '#F59E0B' : gear === 'N' ? '#94A3B8' : '#10B981'}
+              strokeWidth={2}
+            />
+            <SvgText x={189} y={346} fill="#94A3B8" fontSize="7" fontWeight="bold" textAnchor="middle">
+              CAMBIO
+            </SvgText>
+            <SvgText
+              x={189}
+              y={374}
+              fill={gear === 'R' ? '#F59E0B' : gear === 'N' ? '#E2E8F0' : '#10B981'}
+              fontSize="24"
+              fontWeight="bold"
+              textAnchor="middle">
+              {gear}
+            </SvgText>
+
+            {/* Testigos de direccionales */}
+            <SvgText x={162} y={326} fill={leftBlinkOn ? '#22C55E' : '#1E293B'} fontSize="14" fontWeight="bold">
+              ◀
+            </SvgText>
+            <SvgText x={204} y={326} fill={rightBlinkOn ? '#22C55E' : '#1E293B'} fontSize="14" fontWeight="bold">
+              ▶
+            </SvgText>
+
+            {/* Velocímetro (km/h) */}
+            <Circle cx={260} cy={364} r={34} fill="#0F172A" stroke="#10B981" strokeWidth={2} />
+            <SvgText x={260} y={352} fill="#94A3B8" fontSize="7.5" fontWeight="bold" textAnchor="middle">
+              VELOCIDAD
+            </SvgText>
+            <SvgText x={260} y={371} fill="#10B981" fontSize="16" fontWeight="bold" textAnchor="middle">
+              {speedKmh}
+            </SvgText>
+            <SvgText x={260} y={383} fill="#64748B" fontSize="7.5" fontWeight="bold" textAnchor="middle">
+              km/h
+            </SvgText>
           </Svg>
 
-          {/* ESPEJO RETROVISOR SUPERIOR Y BARRA RÁPIDA DE MANDOS DE CABINA */}
-          <View style={styles.topCabinOverlay} pointerEvents="box-none">
-            {/* Espejo Retrovisor con sensor de reversa */}
-            <View style={styles.rearMirrorPill}>
-              <Ionicons name="eye-outline" size={13} color={PsychoPalette.mint} />
-              <Text style={styles.rearMirrorText}>
-                ESPEJO RETROVISOR: {rearDistMeters}m • {speedKmh} km/h
+          {/* BARRA FLOTANTE SUPERIOR DE ESTADO Y MANDOS DE CABINA */}
+          <View style={styles.windshieldTopHud} pointerEvents="box-none">
+            <View style={styles.statusBannerPill}>
+              <Ionicons name="speedometer-outline" size={13} color={PsychoPalette.mint} />
+              <Text style={styles.statusBannerText} numberOfLines={1}>
+                {statusBanner}
               </Text>
             </View>
 
-            {/* Botones rápidos de mandos del carro */}
-            <View style={styles.quickCarCmds}>
+            <View style={styles.carInteriorButtons}>
+              <Pressable
+                onPress={() => {
+                  setEngineOn((p) => !p);
+                  playRightSignal();
+                }}
+                style={[styles.cabinSwitchBtn, engineOn ? styles.cabinSwitchBtnMint : styles.cabinSwitchBtnRed]}>
+                <Ionicons name="power" size={11} color="#FFFFFF" />
+                <Text style={styles.cabinSwitchText}>{engineOn ? 'MOTOR' : 'OFF'}</Text>
+              </Pressable>
+
               <Pressable
                 onPress={() => {
                   setTurnSignal((p) => (p === 'LEFT' ? 'NONE' : 'LEFT'));
                   playLeftSignal();
                 }}
-                style={[styles.miniCmdBtn, leftBlinkOn && styles.miniCmdBtnActive]}>
-                <Text style={styles.miniCmdText}>◀</Text>
+                style={[styles.cabinSwitchBtn, leftBlinkOn && styles.cabinSwitchBtnAmber]}>
+                <Text style={styles.cabinSwitchText}>◀ IZQ</Text>
               </Pressable>
 
               <Pressable
@@ -1192,8 +1835,8 @@ export default function ManeuversSimulatorScreen() {
                   setTurnSignal((p) => (p === 'HAZARD' ? 'NONE' : 'HAZARD'));
                   playError();
                 }}
-                style={[styles.miniCmdBtn, turnSignal === 'HAZARD' && styles.miniCmdBtnDanger]}>
-                <Ionicons name="warning" size={12} color="#FFFFFF" />
+                style={[styles.cabinSwitchBtn, turnSignal === 'HAZARD' && styles.cabinSwitchBtnRed]}>
+                <Ionicons name="warning" size={11} color="#FFFFFF" />
               </Pressable>
 
               <Pressable
@@ -1201,235 +1844,406 @@ export default function ManeuversSimulatorScreen() {
                   setTurnSignal((p) => (p === 'RIGHT' ? 'NONE' : 'RIGHT'));
                   playRightSignal();
                 }}
-                style={[styles.miniCmdBtn, rightBlinkOn && styles.miniCmdBtnActive]}>
-                <Text style={styles.miniCmdText}>▶</Text>
+                style={[styles.cabinSwitchBtn, rightBlinkOn && styles.cabinSwitchBtnAmber]}>
+                <Text style={styles.cabinSwitchText}>DER ▶</Text>
               </Pressable>
 
               <Pressable
                 onPress={() => setLightsOn((p) => !p)}
-                style={[styles.miniCmdBtn, lightsOn && styles.miniCmdBtnCyan]}>
-                <Ionicons name="flashlight" size={12} color="#FFFFFF" />
+                style={[styles.cabinSwitchBtn, lightsOn && styles.cabinSwitchBtnCyan]}>
+                <Ionicons name="flashlight" size={11} color="#FFFFFF" />
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  setWipersOn((p) => {
+                    const next = !p;
+                    if (!next) setWiperAngle(0);
+                    return next;
+                  });
+                }}
+                style={[styles.cabinSwitchBtn, wipersOn && styles.cabinSwitchBtnCyan]}>
+                <Ionicons name="water" size={11} color="#FFFFFF" />
               </Pressable>
 
               <Pressable
                 onPress={() => setSeatbeltOn((p) => !p)}
-                style={[styles.miniCmdBtn, seatbeltOn && styles.miniCmdBtnCyan]}>
-                <Ionicons name="shield-checkmark" size={12} color="#FFFFFF" />
+                style={[styles.cabinSwitchBtn, seatbeltOn && styles.cabinSwitchBtnMint]}>
+                <Ionicons name="shield-checkmark" size={11} color="#FFFFFF" />
               </Pressable>
 
               <Pressable
                 onPress={() => setHandbrakeOn((p) => !p)}
-                style={[styles.miniCmdBtn, handbrakeOn && styles.miniCmdBtnDanger]}>
-                <Text style={styles.miniCmdText}>(P)</Text>
+                style={[styles.cabinSwitchBtn, handbrakeOn && styles.cabinSwitchBtnRed]}>
+                <Text style={styles.cabinSwitchText}>(P) MANO</Text>
               </Pressable>
             </View>
           </View>
 
-          {/* ==================== DERECHA: PALANCA DE CAMBIOS 3D METÁLICA (COMO EN LA IMAGEN) ==================== */}
-          <View style={styles.shifterRightContainer}>
-            <Pressable
-              onPress={() => {
-                const nextG = gear === 'D' ? 'R' : 'D';
-                setGear(nextG);
-                playRightSignal();
-              }}
-              style={styles.shifterPressable}
-              accessibilityRole="button"
-              accessibilityLabel="Palanca de cambios Avance y Reversa">
-              <Svg width={96} height={122} viewBox="0 0 96 122">
-                {/* Base circular metálica cromada con ranuras en H */}
-                <Ellipse cx={48} cy={92} rx={38} ry={22} fill="#CBD5E1" stroke="#475569" strokeWidth={2.5} />
-                <Ellipse cx={48} cy={90} rx={32} ry={17} fill="#94A3B8" stroke="#1E293B" strokeWidth={1.5} />
-                {/* Rejilla en H negra */}
-                <Path
-                  d="M 30 82 L 30 98 M 48 80 L 48 100 M 66 82 L 66 98 M 30 90 L 66 90"
-                  stroke="#0F172A"
-                  strokeWidth={4.5}
-                  strokeLinecap="round"
-                />
-
-                {/* Barra cromada de la palanca */}
-                <Line
-                  x1={48}
-                  y1={90}
-                  x2={48}
-                  y2={gear === 'D' ? 42 : 58}
-                  stroke="#E2E8F0"
-                  strokeWidth={9}
-                  strokeLinecap="round"
-                />
-
-                {/* Pomo esférico negro 3D con diagrama R 2 4 / 1 3 5 arriba (igual a la imagen) */}
-                <G transform={`translate(0, ${gear === 'D' ? 0 : 14})`}>
-                  <Circle cx={48} cy={34} r={28} fill="#1E293B" stroke="#94A3B8" strokeWidth={2.5} />
-                  <Circle cx={48} cy={28} r={20} fill="#0F172A" stroke="#CBD5E1" strokeWidth={1.5} />
-                  <SvgText x={48} y={21} fill="#FFFFFF" fontSize="7.5" fontWeight="bold" textAnchor="middle">
-                    R  2  4
-                  </SvgText>
-                  <Line x1={35} y1={26} x2={61} y2={26} stroke="#FFFFFF" strokeWidth={1.2} />
-                  <SvgText x={48} y={35} fill="#FFFFFF" fontSize="7.5" fontWeight="bold" textAnchor="middle">
-                    1  3  5
-                  </SvgText>
-                </G>
-              </Svg>
-              <View
-                style={[
-                  styles.gearStateBadge,
-                  gear === 'D' ? styles.gearStateBadgeD : styles.gearStateBadgeR,
-                ]}>
-                <Text style={styles.gearStateBadgeText}>
-                  {gear === 'D' ? 'MARCHA: D (AVANCE)' : 'MARCHA: R (REVERSA)'}
-                </Text>
-              </View>
-            </Pressable>
-          </View>
-
-          {/* ==================== CONTROLES INFERIORES IDÉNTICOS A LA IMAGEN: VOLANTE 3D + PEDALES METÁLICOS ==================== */}
-          <View style={styles.bottomControlsOverlay} pointerEvents="box-none">
-            {/* ESQUINA INFERIOR IZQUIERDA: VOLANTE DEPORTIVO 3D NEGRO DE 3 RADIOS */}
-            <View style={styles.steeringWheelZone}>
+          {/* ==================== MANDOS INFERIORES EN HORIZONTAL: VOLANTE + CAJA EN H + 3 PEDALES INDEPENDIENTES ==================== */}
+          <View style={styles.bottomCockpitControls} pointerEvents="box-none">
+            {/* 1. CAJA DE DIRECCIÓN (VOLANTE 3D) */}
+            <View style={styles.steeringColumnBox}>
               <GestureDetector gesture={steeringWheelGesture}>
                 <View style={styles.steeringWheelTouchBox}>
-                  <Svg
-                    width={126}
-                    height={126}
-                    viewBox="0 0 130 130"
-                    style={{ transform: [{ rotate: `${wheelVisualRotateDeg}deg` }] }}>
-                    {/* Aro exterior del volante negro con relieve */}
-                    <Circle
-                      cx={65}
-                      cy={65}
-                      r={54}
-                      fill="none"
-                      stroke="#0F172A"
-                      strokeWidth={15}
-                    />
-                    <Circle
-                      cx={65}
-                      cy={65}
-                      r={54}
-                      fill="none"
-                      stroke="#334155"
-                      strokeWidth={4}
-                    />
-                    {/* 3 Radios deportivos plateados/grises (como el volante de la imagen) */}
-                    <Polygon
-                      points="16,58 46,52 46,74 18,74"
-                      fill="#64748B"
-                      stroke="#1E293B"
-                      strokeWidth={1.5}
-                    />
-                    <Polygon
-                      points="114,58 84,52 84,74 112,74"
-                      fill="#64748B"
-                      stroke="#1E293B"
-                      strokeWidth={1.5}
-                    />
-                    <Polygon
-                      points="54,82 76,82 70,116 60,116"
-                      fill="#64748B"
-                      stroke="#1E293B"
-                      strokeWidth={1.5}
-                    />
-                    {/* Centro acolchado del volante y emblema metálico */}
-                    <Circle
-                      cx={65}
-                      cy={65}
-                      r={24}
-                      fill="#1E293B"
-                      stroke="#94A3B8"
-                      strokeWidth={2}
-                    />
-                    <Circle cx={65} cy={65} r={8} fill="#CBD5E1" />
-                  </Svg>
+                  <View pointerEvents="none">
+                    <Svg
+                      width={136}
+                      height={136}
+                      viewBox="0 0 134 134"
+                      style={{ transform: [{ rotate: `${wheelVisualRotateDeg}deg` }] }}>
+                      <Circle
+                        cx={67}
+                        cy={67}
+                        r={56}
+                        fill="none"
+                        stroke="#0F172A"
+                        strokeWidth={15}
+                      />
+                      <Circle
+                        cx={67}
+                        cy={67}
+                        r={56}
+                        fill="none"
+                        stroke="#334155"
+                        strokeWidth={3.5}
+                      />
+                      <Rect x={63} y={5} width={8} height={11} rx={2} fill="#EF4444" />
+                      <Polygon
+                        points="16,60 47,54 47,76 18,76"
+                        fill="#64748B"
+                        stroke="#1E293B"
+                        strokeWidth={1.5}
+                      />
+                      <Polygon
+                        points="118,60 87,54 87,76 116,76"
+                        fill="#64748B"
+                        stroke="#1E293B"
+                        strokeWidth={1.5}
+                      />
+                      <Polygon
+                        points="56,84 78,84 72,120 62,120"
+                        fill="#64748B"
+                        stroke="#1E293B"
+                        strokeWidth={1.5}
+                      />
+                      <Circle
+                        cx={67}
+                        cy={67}
+                        r={24}
+                        fill="#1E293B"
+                        stroke="#94A3B8"
+                        strokeWidth={2}
+                      />
+                      <Circle cx={67} cy={67} r={8} fill="#38BDF8" />
+                    </Svg>
+                  </View>
                 </View>
               </GestureDetector>
-              <View style={styles.wheelAnglePill}>
-                <Text style={styles.wheelAnglePillText}>
-                  GIRO: {steerAngleDeg > 0 ? `+${steerAngleDeg}°` : `${steerAngleDeg}°`}
+              <View style={styles.wheelInfoPill}>
+                <Text style={styles.wheelInfoText}>
+                  DIRECCIÓN: {steerAngleDeg > 0 ? `+${steerAngleDeg}°` : `${steerAngleDeg}°`}
                 </Text>
               </View>
             </View>
 
-            {/* ESQUINA INFERIOR DERECHA: PEDALES METÁLICOS PERFORADOS (FRENO HORIZONTAL + ACELERADOR VERTICAL) */}
-            <View style={styles.metallicPedalsRow}>
-              {/* PEDAL DE FRENO METÁLICO PERFORADO (IZQUIERDA) */}
-              <Pressable
-                onPressIn={() => setBrakeActive(true)}
-                onPressOut={() => setBrakeActive(false)}
-                style={[
-                  styles.metallicBrakePressable,
-                  brakeActive && { transform: [{ scale: 0.93 }] },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="Pedal de Freno">
-                <Svg width={94} height={64} viewBox="0 0 94 64">
-                  <Rect
-                    x={3}
-                    y={4}
-                    width={88}
-                    height={56}
-                    rx={10}
-                    fill={brakeActive ? '#FCA5A5' : '#E2E8F0'}
-                    stroke="#1E293B"
-                    strokeWidth={2.5}
-                  />
-                  {/* Perforaciones circulares antideslizantes */}
-                  {[16, 30, 44, 58, 72].map((cx) =>
-                    [16, 30].map((cy) => (
-                      <Circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={3.5} fill="#334155" />
-                    ))
-                  )}
-                  <Circle cx={16} cy={44} r={3.5} fill="#334155" />
-                  <Circle cx={30} cy={44} r={3.5} fill="#334155" />
-                  {/* Recorte inferior derecho igual al pedal de la imagen */}
-                  <Polygon
-                    points="46,38 82,38 82,54 38,54"
-                    fill="#64748B"
-                    stroke="#1E293B"
-                    strokeWidth={1.5}
-                  />
-                </Svg>
-                <Text style={styles.pedalCaption}>FRENO</Text>
-              </Pressable>
+            {/* 2. CAJA DE CAMBIOS EN H (R, N, 1, 2, 3, 4, 5) */}
+            <View style={styles.realShifterConsole}>
+              <Text style={styles.shifterHeaderTitle}>
+                CAJA DE CAMBIOS ({currentGearSpec.label})
+              </Text>
 
-              {/* PEDAL DE ACELERADOR METÁLICO VERTICAL PERFORADO (DERECHA) */}
-              <Pressable
-                onPressIn={() => setGasActive(true)}
-                onPressOut={() => setGasActive(false)}
-                style={[
-                  styles.metallicGasPressable,
-                  gasActive && { transform: [{ scale: 0.93 }] },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="Pedal de Acelerador">
-                <Svg width={62} height={106} viewBox="0 0 62 106">
-                  <Rect
-                    x={6}
-                    y={4}
-                    width={50}
-                    height={98}
-                    rx={10}
-                    fill={gasActive ? '#86EFAC' : '#E2E8F0'}
-                    stroke="#1E293B"
-                    strokeWidth={2.5}
+              <View style={styles.shifterBodyRow}>
+                <GestureDetector gesture={shifterPanGesture}>
+                  <View style={styles.hGateTouchBox}>
+                    <View pointerEvents="none">
+                      <Svg width={98} height={88} viewBox="0 0 100 100">
+                        <Rect
+                          x={4}
+                          y={4}
+                          width={92}
+                          height={92}
+                          rx={18}
+                          fill="#1E293B"
+                          stroke="#64748B"
+                          strokeWidth={2.5}
+                        />
+                        <Path
+                          d="M 18 22 L 18 78 M 39 22 L 39 78 M 61 22 L 61 78 M 18 50 L 61 50"
+                          stroke="#020617"
+                          strokeWidth={8}
+                          strokeLinecap="round"
+                        />
+                        <Path
+                          d="M 18 22 L 18 78 M 39 22 L 39 78 M 61 22 L 61 78 M 18 50 L 61 50"
+                          stroke="#475569"
+                          strokeWidth={2.5}
+                          strokeLinecap="round"
+                        />
+                        <SvgText x={18} y={14} fill="#F59E0B" fontSize="9" fontWeight="bold" textAnchor="middle">
+                          R
+                        </SvgText>
+                        <SvgText x={18} y={92} fill="#E2E8F0" fontSize="9" fontWeight="bold" textAnchor="middle">
+                          1
+                        </SvgText>
+                        <SvgText x={39} y={14} fill="#E2E8F0" fontSize="9" fontWeight="bold" textAnchor="middle">
+                          2
+                        </SvgText>
+                        <SvgText x={39} y={92} fill="#E2E8F0" fontSize="9" fontWeight="bold" textAnchor="middle">
+                          3
+                        </SvgText>
+                        <SvgText x={61} y={14} fill="#E2E8F0" fontSize="9" fontWeight="bold" textAnchor="middle">
+                          4
+                        </SvgText>
+                        <SvgText x={61} y={92} fill="#E2E8F0" fontSize="9" fontWeight="bold" textAnchor="middle">
+                          5
+                        </SvgText>
+                        <SvgText x={82} y={53} fill="#38BDF8" fontSize="9" fontWeight="bold" textAnchor="middle">
+                          N
+                        </SvgText>
+                        <Line
+                          x1={42}
+                          y1={50}
+                          x2={currentGearSpec.slotX}
+                          y2={currentGearSpec.slotY}
+                          stroke="#CBD5E1"
+                          strokeWidth={6}
+                          strokeLinecap="round"
+                        />
+                        <G transform={`translate(${currentGearSpec.slotX}, ${currentGearSpec.slotY})`}>
+                          <Circle
+                            cx={0}
+                            cy={0}
+                            r={14}
+                            fill="#0F172A"
+                            stroke={gear === 'R' ? '#F59E0B' : gear === 'N' ? '#38BDF8' : '#10B981'}
+                            strokeWidth={2.5}
+                          />
+                          <SvgText
+                            x={0}
+                            y={4}
+                            fill="#FFFFFF"
+                            fontSize="10"
+                            fontWeight="bold"
+                            textAnchor="middle">
+                            {gear}
+                          </SvgText>
+                        </G>
+                      </Svg>
+                    </View>
+                  </View>
+                </GestureDetector>
+
+                <View style={styles.gearButtonsGrid}>
+                  <View style={styles.gearButtonsRow}>
+                    {(['R', '2', '4', 'N'] as ManualGear[]).map((g) => {
+                      const active = gear === g;
+                      return (
+                        <Pressable
+                          key={g}
+                          onPress={() => selectGear(g)}
+                          style={[
+                            styles.gearSlotBtn,
+                            active && (g === 'R' ? styles.gearSlotBtnReverse : styles.gearSlotBtnActive),
+                          ]}>
+                          <Text style={[styles.gearSlotBtnText, active && styles.gearSlotBtnTextActive]}>
+                            {g}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <View style={styles.gearButtonsRow}>
+                    {(['1', '3', '5'] as ManualGear[]).map((g) => {
+                      const active = gear === g;
+                      return (
+                        <Pressable
+                          key={g}
+                          onPress={() => selectGear(g)}
+                          style={[styles.gearSlotBtn, active && styles.gearSlotBtnActive]}>
+                          <Text style={[styles.gearSlotBtnText, active && styles.gearSlotBtnTextActive]}>
+                            {g}ª
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* 3. LOS 3 PEDALES INDEPENDIENTES PARA CADA FUNCIÓN: EMBRAGUE + FRENO + ACELERADOR */}
+            <View style={styles.independentPedalsBox}>
+              <View style={styles.pedalsHeaderRow}>
+                <Text style={styles.pedalsHeaderLabel}>PEDALES INDEPENDIENTES</Text>
+                <Pressable
+                  onPress={() => {
+                    if (gear === 'N') setGear('1');
+                    setHandbrakeOn(false);
+                    setThrottleLock((prev) => !prev);
+                  }}
+                  style={[styles.lockGasMiniBtn, throttleLock && styles.lockGasMiniBtnActive]}>
+                  <Ionicons
+                    name={throttleLock ? 'lock-closed' : 'lock-open-outline'}
+                    size={10}
+                    color={throttleLock ? '#020617' : PsychoPalette.mint}
                   />
-                  {/* Perforaciones circulares antideslizantes */}
-                  {[20, 32, 44].map((cx) =>
-                    [18, 32, 46, 60].map((cy) => (
-                      <Circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={3.5} fill="#334155" />
-                    ))
-                  )}
-                  {/* Recorte triangular inferior izquierdo igual al pedal de la imagen */}
-                  <Polygon
-                    points="12,68 42,94 12,94"
-                    fill="#64748B"
-                    stroke="#1E293B"
-                    strokeWidth={1.5}
-                  />
-                </Svg>
-                <Text style={styles.pedalCaption}>ACELERADOR</Text>
-              </Pressable>
+                  <Text style={[styles.lockGasMiniText, throttleLock && { color: '#020617' }]}>
+                    {throttleLock ? 'ACEL. FIJO ON' : 'FIJAR ACEL.'}
+                  </Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.threePedalsRow}>
+                {/* PEDAL 1: EMBRAGUE INDEPENDIENTE (IZQUIERDA) */}
+                <Pressable
+                  onTouchStart={() => setClutchActive(true)}
+                  onTouchEnd={() => setClutchActive(false)}
+                  onTouchCancel={() => setClutchActive(false)}
+                  onPressIn={() => setClutchActive(true)}
+                  onPressOut={() => setClutchActive(false)}
+                  style={[
+                    styles.singlePedalCard,
+                    styles.clutchPedalBorder,
+                    clutchActive && styles.pedalPressedScale,
+                  ]}>
+                  <View style={styles.pedalBarTrack}>
+                    <View
+                      style={[
+                        styles.pedalBarFill,
+                        {
+                          height: clutchActive ? '100%' : '12%',
+                          backgroundColor: '#38BDF8',
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View pointerEvents="none">
+                    <Svg width={44} height={68} viewBox="0 0 54 84">
+                      <Rect
+                        x={4}
+                        y={4}
+                        width={46}
+                        height={76}
+                        rx={8}
+                        fill={clutchActive ? '#7DD3FC' : '#CBD5E1'}
+                        stroke="#0F172A"
+                        strokeWidth={2.5}
+                      />
+                      {[16, 27, 38].map((cx) =>
+                        [18, 34, 50, 64].map((cy) => (
+                          <Circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={3} fill="#1E293B" />
+                        ))
+                      )}
+                    </Svg>
+                  </View>
+                  <Text style={[styles.pedalNameTag, { color: '#38BDF8' }]}>EMBRAGUE</Text>
+                </Pressable>
+
+                {/* PEDAL 2: FRENO INDEPENDIENTE (CENTRO - SOLO DETIENE EL CARRO) */}
+                <Pressable
+                  onTouchStart={() => {
+                    setBrakeActive(true);
+                    setThrottleLock(false);
+                  }}
+                  onTouchEnd={() => setBrakeActive(false)}
+                  onTouchCancel={() => setBrakeActive(false)}
+                  onPressIn={() => {
+                    setBrakeActive(true);
+                    setThrottleLock(false);
+                  }}
+                  onPressOut={() => setBrakeActive(false)}
+                  style={[
+                    styles.singlePedalCard,
+                    styles.brakePedalBorder,
+                    brakeActive && styles.pedalPressedScale,
+                  ]}>
+                  <View style={styles.pedalBarTrack}>
+                    <View
+                      style={[
+                        styles.pedalBarFill,
+                        {
+                          height: brakeActive ? '100%' : '12%',
+                          backgroundColor: '#EF4444',
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View pointerEvents="none">
+                    <Svg width={56} height={68} viewBox="0 0 68 84">
+                      <Rect
+                        x={4}
+                        y={8}
+                        width={60}
+                        height={68}
+                        rx={9}
+                        fill={brakeActive ? '#FCA5A5' : '#E2E8F0'}
+                        stroke="#0F172A"
+                        strokeWidth={2.5}
+                      />
+                      {[16, 28, 40, 52].map((cx) =>
+                        [22, 38, 54].map((cy) => (
+                          <Circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={3.2} fill="#1E293B" />
+                        ))
+                      )}
+                    </Svg>
+                  </View>
+                  <Text style={[styles.pedalNameTag, { color: '#F87171' }]}>FRENO</Text>
+                </Pressable>
+
+                {/* PEDAL 3: ACELERADOR INDEPENDIENTE (DERECHA - IMPULSA EN LA MARCHA ACTUAL) */}
+                <Pressable
+                  onTouchStart={() => {
+                    if (gear === 'N') setGear('1');
+                    setHandbrakeOn(false);
+                    setGasActive(true);
+                  }}
+                  onTouchEnd={() => setGasActive(false)}
+                  onTouchCancel={() => setGasActive(false)}
+                  onPressIn={() => {
+                    if (gear === 'N') setGear('1');
+                    setHandbrakeOn(false);
+                    setGasActive(true);
+                  }}
+                  onPressOut={() => setGasActive(false)}
+                  style={[
+                    styles.singlePedalCard,
+                    styles.gasPedalBorder,
+                    (gasActive || throttleLock) && styles.pedalPressedScale,
+                  ]}>
+                  <View style={styles.pedalBarTrack}>
+                    <View
+                      style={[
+                        styles.pedalBarFill,
+                        {
+                          height: gasActive || throttleLock ? '100%' : '12%',
+                          backgroundColor: '#10B981',
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View pointerEvents="none">
+                    <Svg width={48} height={74} viewBox="0 0 58 92">
+                      <Rect
+                        x={5}
+                        y={4}
+                        width={48}
+                        height={84}
+                        rx={9}
+                        fill={gasActive || throttleLock ? '#86EFAC' : '#E2E8F0'}
+                        stroke="#0F172A"
+                        strokeWidth={2.5}
+                      />
+                      {[18, 29, 40].map((cx) =>
+                        [18, 34, 50, 66].map((cy) => (
+                          <Circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={3.2} fill="#1E293B" />
+                        ))
+                      )}
+                    </Svg>
+                  </View>
+                  <Text style={[styles.pedalNameTag, { color: '#34D399' }]}>ACELERADOR</Text>
+                </Pressable>
+              </View>
             </View>
           </View>
 
@@ -1437,69 +2251,92 @@ export default function ManeuversSimulatorScreen() {
           {parkedSuccess ? (
             <View style={styles.successOverlay}>
               <View style={styles.successModalCard}>
-                <Ionicons name="checkmark-done-circle" size={46} color={PsychoPalette.mint} />
+                <Ionicons name="checkmark-done-circle" size={44} color={PsychoPalette.mint} />
                 <Text style={styles.successModalTitle}>¡PRUEBA DE CONDUCCIÓN 3D SUPERADA!</Text>
                 <Text style={styles.successModalDesc}>
-                  Estacionó el Sedán Blanco dentro de la Zona [P] en {elapsedSec.toFixed(1)}s con{' '}
+                  Estacionó correctamente dentro de la Zona [P] en {elapsedSec.toFixed(1)}s con{' '}
                   {collisions} {collisions === 1 ? 'cono tocado' : 'conos tocados'}.
                 </Text>
                 <View style={styles.successModalActions}>
                   <Pressable onPress={() => resetScenario(scenario)} style={styles.modalRepeatBtn}>
-                    <Ionicons name="refresh" size={15} color={PsychoPalette.bgPrimary} />
+                    <Ionicons name="refresh" size={14} color={PsychoPalette.bgPrimary} />
                     <Text style={styles.modalBtnText}>REPETIR NIVEL</Text>
                   </Pressable>
                   <Pressable onPress={() => router.push('/')} style={styles.modalDashboardBtn}>
                     <Text style={styles.modalBtnText}>VER BAREMOS EN TABLERO</Text>
-                    <Ionicons name="arrow-forward" size={15} color={PsychoPalette.bgPrimary} />
+                    <Ionicons name="arrow-forward" size={14} color={PsychoPalette.bgPrimary} />
                   </Pressable>
                 </View>
               </View>
             </View>
           ) : null}
         </View>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  outerRoot: {
     flex: 1,
     backgroundColor: PsychoPalette.bgPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  mainContainer: {
-    flex: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 6,
-    maxWidth: 980,
-    width: '100%',
-    alignSelf: 'center',
+  landscapeWrapper: {
+    backgroundColor: PsychoPalette.bgPrimary,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 4,
   },
-  topHudBar: {
+  compactTopBar: {
     backgroundColor: PsychoPalette.bgSecondary,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: PsychoPalette.borderSubtle,
-    padding: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
     gap: 6,
+  },
+  leftNavGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: PsychoPalette.bgPanel,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: PsychoPalette.borderSubtle,
+  },
+  backBtnText: {
+    color: PsychoPalette.textPrimary,
+    fontSize: 8.5,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
   },
   scenarioTabs: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 5,
     alignItems: 'center',
   },
   scenarioTab: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
     backgroundColor: PsychoPalette.bgPanel,
     borderWidth: 1,
     borderColor: PsychoPalette.borderSubtle,
@@ -1514,7 +2351,7 @@ const styles = StyleSheet.create({
   },
   scenarioTabText: {
     color: PsychoPalette.textSecondary,
-    fontSize: 9.5,
+    fontSize: 8.5,
     fontWeight: '800',
     fontFamily: Fonts.mono,
   },
@@ -1525,259 +2362,357 @@ const styles = StyleSheet.create({
   telemetryStrip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
+    gap: 5,
   },
   statBadge: {
     backgroundColor: PsychoPalette.bgPanel,
-    borderRadius: 7,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: PsychoPalette.borderSubtle,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     alignItems: 'center',
   },
   statBadgeLabel: {
     color: PsychoPalette.textMuted,
-    fontSize: 7.5,
+    fontSize: 6.5,
     fontWeight: '800',
     fontFamily: Fonts.mono,
   },
   statBadgeValue: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '900',
     fontFamily: Fonts.mono,
   },
   resetSimBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
     backgroundColor: PsychoPalette.mint,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
   },
   resetSimBtnText: {
     color: PsychoPalette.bgPrimary,
-    fontSize: 9.5,
+    fontSize: 8.5,
     fontWeight: '900',
     fontFamily: Fonts.mono,
   },
   viewportContainer: {
     flex: 1,
-    backgroundColor: '#64748B',
-    borderRadius: 16,
+    backgroundColor: '#0F172A',
+    borderRadius: 14,
     borderWidth: 2,
     borderColor: PsychoPalette.borderSubtle,
     overflow: 'hidden',
     position: 'relative',
-    minHeight: 350,
   },
-  topCabinOverlay: {
+  windshieldTopHud: {
     position: 'absolute',
     top: 8,
-    left: 10,
-    right: 10,
+    left: 54,
+    right: 54,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     flexWrap: 'wrap',
     gap: 6,
   },
-  rearMirrorPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(15, 23, 42, 0.88)',
-    borderWidth: 1.5,
-    borderColor: PsychoPalette.mint,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  rearMirrorText: {
-    color: '#FFFFFF',
-    fontSize: 9.5,
-    fontWeight: '900',
-    fontFamily: Fonts.mono,
-  },
-  quickCarCmds: {
+  statusBannerPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-  },
-  miniCmdBtn: {
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    backgroundColor: 'rgba(2, 6, 23, 0.84)',
     borderWidth: 1,
-    borderColor: '#64748B',
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 7,
-  },
-  miniCmdBtnActive: {
-    backgroundColor: PsychoPalette.amberWarning,
-    borderColor: '#FFFFFF',
-  },
-  miniCmdBtnCyan: {
-    backgroundColor: '#0284C7',
-    borderColor: '#FFFFFF',
-  },
-  miniCmdBtnDanger: {
-    backgroundColor: '#DC2626',
-    borderColor: '#FFFFFF',
-  },
-  miniCmdText: {
-    color: '#FFFFFF',
-    fontSize: 9.5,
-    fontWeight: '900',
-    fontFamily: Fonts.mono,
-  },
-  shifterRightContainer: {
-    position: 'absolute',
-    top: 56,
-    right: 12,
-    alignItems: 'center',
-  },
-  shifterPressable: {
-    alignItems: 'center',
-  },
-  gearStateBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
-    marginTop: -4,
-  },
-  gearStateBadgeD: {
-    backgroundColor: 'rgba(15, 23, 42, 0.9)',
     borderColor: PsychoPalette.mint,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
   },
-  gearStateBadgeR: {
-    backgroundColor: 'rgba(153, 27, 27, 0.92)',
-    borderColor: '#FACC15',
-  },
-  gearStateBadgeText: {
-    color: '#FFFFFF',
+  statusBannerText: {
+    color: '#F8FAFC',
     fontSize: 8.5,
-    fontWeight: '900',
+    fontWeight: '800',
     fontFamily: Fonts.mono,
   },
-  bottomControlsOverlay: {
-    position: 'absolute',
-    left: 14,
-    right: 14,
-    bottom: 10,
+  carInteriorButtons: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-  },
-  steeringWheelZone: {
     alignItems: 'center',
     gap: 4,
   },
+  cabinSwitchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(2, 6, 23, 0.86)',
+    borderWidth: 1,
+    borderColor: '#475569',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  cabinSwitchBtnAmber: {
+    backgroundColor: '#F59E0B',
+    borderColor: '#FEF08A',
+  },
+  cabinSwitchBtnRed: {
+    backgroundColor: '#EF4444',
+    borderColor: '#FCA5A5',
+  },
+  cabinSwitchBtnCyan: {
+    backgroundColor: '#0284C7',
+    borderColor: '#7DD3FC',
+  },
+  cabinSwitchBtnMint: {
+    backgroundColor: '#059669',
+    borderColor: '#6EE7B7',
+  },
+  cabinSwitchText: {
+    color: '#FFFFFF',
+    fontSize: 7.5,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  bottomCockpitControls: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: 6,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  steeringColumnBox: {
+    alignItems: 'center',
+    gap: 2,
+  },
   steeringWheelTouchBox: {
-    width: 128,
-    height: 128,
+    width: 136,
+    height: 136,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  wheelAnglePill: {
-    backgroundColor: 'rgba(15, 23, 42, 0.88)',
-    paddingHorizontal: 10,
-    paddingVertical: 3,
+  wheelInfoPill: {
+    backgroundColor: 'rgba(2, 6, 23, 0.92)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: PsychoPalette.cyan,
   },
-  wheelAnglePillText: {
+  wheelInfoText: {
     color: PsychoPalette.cyan,
-    fontSize: 9,
+    fontSize: 7.5,
     fontWeight: '900',
     fontFamily: Fonts.mono,
   },
-  metallicPedalsRow: {
+  realShifterConsole: {
+    backgroundColor: 'rgba(2, 6, 23, 0.92)',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#475569',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    alignItems: 'center',
+    gap: 3,
+  },
+  shifterHeaderTitle: {
+    color: '#E2E8F0',
+    fontSize: 7.5,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  shifterBodyRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 10,
-  },
-  metallicBrakePressable: {
     alignItems: 'center',
-    gap: 2,
+    gap: 6,
   },
-  metallicGasPressable: {
+  hGateTouchBox: {
+    width: 98,
+    height: 88,
     alignItems: 'center',
-    gap: 2,
+    justifyContent: 'center',
   },
-  pedalCaption: {
-    color: '#FFFFFF',
+  gearButtonsGrid: {
+    gap: 4,
+  },
+  gearButtonsRow: {
+    flexDirection: 'row',
+    gap: 3,
+  },
+  gearSlotBtn: {
+    minWidth: 26,
+    paddingVertical: 5,
+    paddingHorizontal: 5,
+    borderRadius: 5,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#475569',
+    alignItems: 'center',
+  },
+  gearSlotBtnActive: {
+    backgroundColor: PsychoPalette.mint,
+    borderColor: '#FFFFFF',
+  },
+  gearSlotBtnReverse: {
+    backgroundColor: '#F59E0B',
+    borderColor: '#FFFFFF',
+  },
+  gearSlotBtnText: {
+    color: '#CBD5E1',
     fontSize: 8.5,
     fontWeight: '900',
     fontFamily: Fonts.mono,
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+  },
+  gearSlotBtnTextActive: {
+    color: '#020617',
+  },
+  independentPedalsBox: {
+    backgroundColor: 'rgba(2, 6, 23, 0.92)',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#334155',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  pedalsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  pedalsHeaderLabel: {
+    color: '#94A3B8',
+    fontSize: 7,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  lockGasMiniBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
+    borderWidth: 1,
+    borderColor: PsychoPalette.mint,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+  },
+  lockGasMiniBtnActive: {
+    backgroundColor: PsychoPalette.mint,
+  },
+  lockGasMiniText: {
+    color: PsychoPalette.mint,
+    fontSize: 6.5,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  threePedalsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  singlePedalCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 8,
+    borderWidth: 1.5,
+    paddingHorizontal: 5,
+    paddingVertical: 4,
+    alignItems: 'center',
+    gap: 2,
+    position: 'relative',
+  },
+  clutchPedalBorder: {
+    borderColor: 'rgba(56, 189, 248, 0.5)',
+  },
+  brakePedalBorder: {
+    borderColor: 'rgba(239, 68, 68, 0.5)',
+  },
+  gasPedalBorder: {
+    borderColor: 'rgba(16, 185, 129, 0.5)',
+  },
+  pedalPressedScale: {
+    transform: [{ scale: 0.93 }],
+    backgroundColor: '#1E293B',
+  },
+  pedalBarTrack: {
+    width: '100%',
+    height: 4,
+    backgroundColor: '#020617',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  pedalBarFill: {
+    width: '100%',
+    borderRadius: 2,
+  },
+  pedalNameTag: {
+    fontSize: 7,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
   },
   successOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(5, 10, 20, 0.86)',
+    backgroundColor: 'rgba(5, 9, 20, 0.86)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
-    zIndex: 40,
+    padding: 18,
   },
   successModalCard: {
-    backgroundColor: PsychoPalette.bgCard,
+    backgroundColor: PsychoPalette.bgSecondary,
     borderRadius: 16,
     borderWidth: 2,
     borderColor: PsychoPalette.mint,
-    padding: 20,
+    padding: 18,
     alignItems: 'center',
+    gap: 8,
     maxWidth: 420,
     width: '100%',
-    gap: 10,
   },
   successModalTitle: {
     color: PsychoPalette.mint,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
     fontFamily: Fonts.mono,
     textAlign: 'center',
   },
   successModalDesc: {
-    color: PsychoPalette.textPrimary,
-    fontSize: 13,
+    color: PsychoPalette.textSecondary,
+    fontSize: 11.5,
     textAlign: 'center',
-    lineHeight: 19,
+    lineHeight: 17,
   },
   successModalActions: {
     flexDirection: 'row',
     gap: 10,
+    marginTop: 4,
     flexWrap: 'wrap',
     justifyContent: 'center',
-    marginTop: 6,
   },
   modalRepeatBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: PsychoPalette.mint,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    gap: 5,
+    backgroundColor: PsychoPalette.cyan,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 8,
   },
   modalDashboardBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: PsychoPalette.cyan,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    gap: 5,
+    backgroundColor: PsychoPalette.mint,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 8,
   },
   modalBtnText: {
     color: PsychoPalette.bgPrimary,
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '900',
     fontFamily: Fonts.mono,
   },

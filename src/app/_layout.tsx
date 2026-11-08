@@ -42,7 +42,7 @@ export default function RootLayout() {
             <Stack.Screen name="preoperational" />
             <Stack.Screen name="reaction" />
             <Stack.Screen name="lathe" />
-            <Stack.Screen name="maneuvers" />
+            <Stack.Screen name="maneuvers" options={{ orientation: 'landscape' }} />
           </Stack>
         </ThemeProvider>
       </EvaluationProvider>
