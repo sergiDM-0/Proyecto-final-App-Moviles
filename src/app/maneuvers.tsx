@@ -343,19 +343,19 @@ export default function ManeuversSimulatorScreen() {
         const spec = GEAR_SPECS[p.gear];
         const isAccelerating = p.gas || p.throttleLock;
 
-        // Suavizado progresivo del pedal del acelerador y de la dirección para eliminar tirones
+        // Respuesta ágil del pedal del acelerador y de la dirección
         const targetThrottle = isAccelerating && !p.brake && !p.handbrakeOn && p.engineOn ? 1 : 0;
-        const throttleLerp = 1 - Math.exp(-(targetThrottle > p.throttleSmooth ? 2.4 : 4.2) * dt);
+        const throttleLerp = 1 - Math.exp(-(targetThrottle > p.throttleSmooth ? 6.5 : 7.5) * dt);
         p.throttleSmooth += (targetThrottle - p.throttleSmooth) * throttleLerp;
 
-        const steerLerp = 1 - Math.exp(-8.5 * dt);
+        const steerLerp = 1 - Math.exp(-11.5 * dt);
         p.steerRad += (p.targetSteerRad - p.steerRad) * steerLerp;
 
-        // Curva cuadrática suave para que el arranque sea delicado y sin tirones
-        const smoothThrottleCurve = p.throttleSmooth * (0.32 + 0.68 * p.throttleSmooth);
-        const baseAccel = 38 * spec.accelFactor * Math.max(0.12, smoothThrottleCurve);
-        const brakeDecel = 78;
-        const rollingFriction = 14;
+        // Empuje inmediato y potente desde el primer toque del acelerador
+        const smoothThrottleCurve = p.throttleSmooth * (0.62 + 0.38 * p.throttleSmooth);
+        const baseAccel = 96 * spec.accelFactor * Math.max(0.28, smoothThrottleCurve);
+        const brakeDecel = 155;
+        const rollingFriction = 18;
 
         if (!p.engineOn) {
           p.rpm += (0 - p.rpm) * Math.min(1, dt * 5);

@@ -62,6 +62,65 @@ export default function DashboardScreen() {
     maneuverResult,
   ].filter(Boolean).length;
 
+  const moduleEvaluations = [
+    {
+      id: 'preop',
+      label: 'Preoperacional',
+      done: Boolean(preoperationalResult),
+      grade: preoperationalResult?.grade ?? 'PENDIENTE',
+      scorePct: preoperationalResult ? preoperationalResult.scorePct : 0,
+      metricText: preoperationalResult ? `${preoperationalResult.scorePct}%` : 'Pendiente',
+    },
+    {
+      id: 'reaction',
+      label: 'Reacción y Audio',
+      done: Boolean(reactionResult),
+      grade: reactionResult?.grade ?? 'PENDIENTE',
+      scorePct: reactionResult
+        ? reactionResult.grade === 'EXCELENTE'
+          ? Math.max(92, reactionResult.accuracyPct)
+          : reactionResult.grade === 'APTO'
+            ? Math.max(80, reactionResult.accuracyPct)
+            : Math.min(60, reactionResult.accuracyPct)
+        : 0,
+      metricText: reactionResult ? `${reactionResult.avgMs} ms` : 'Pendiente',
+    },
+    {
+      id: 'lathe',
+      label: 'Torno Bimanual',
+      done: Boolean(latheResult),
+      grade: latheResult?.grade ?? 'PENDIENTE',
+      scorePct: latheResult ? latheResult.precisionPct : 0,
+      metricText: latheResult ? `${latheResult.precisionPct}%` : 'Pendiente',
+    },
+    {
+      id: 'maneuver',
+      label: 'Maniobras 3D',
+      done: Boolean(maneuverResult),
+      grade: maneuverResult?.grade ?? 'PENDIENTE',
+      scorePct: maneuverResult
+        ? maneuverResult.grade === 'EXCELENTE'
+          ? 98
+          : maneuverResult.grade === 'APTO'
+            ? 84
+            : 50
+        : 0,
+      metricText: maneuverResult
+        ? `${maneuverResult.elapsedSeconds}s (${maneuverResult.collisions} col.)`
+        : 'Pendiente',
+    },
+  ];
+
+  const completedModules = moduleEvaluations.filter((m) => m.done);
+  const failedModules = completedModules.filter((m) => m.grade === 'NO APTO');
+  const averageScorePct =
+    completedModules.length > 0
+      ? Math.round(
+          completedModules.reduce((acc, item) => acc + item.scorePct, 0) / completedModules.length
+        )
+      : 0;
+  const isApproved = completedModules.length > 0 && failedModules.length === 0 && averageScorePct >= 75;
+
   // PANTALLA DE BIENVENIDA CON IMAGEN ANTES DE ENTRAR A LAS PRUEBAS
   if (!hasStartedApp) {
     return (
@@ -172,6 +231,11 @@ export default function DashboardScreen() {
               </Text>
               <Ionicons name="arrow-forward" size={20} color={PsychoPalette.bgPrimary} />
             </Pressable>
+
+            <View style={styles.authorFooterWrap}>
+              <Ionicons name="code-slash-outline" size={14} color={PsychoPalette.cyan} />
+              <Text style={styles.authorFooterText}>by sergiDM-0</Text>
+            </View>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -252,6 +316,86 @@ export default function DashboardScreen() {
             </View>
           </View>
         </View>
+
+        {/* LETRERO DE DICTAMEN: APROBADO / DESAPROBADO SEGÚN PUNTAJES */}
+        {completedCount > 0 ? (
+          <View
+            style={[
+              styles.verdictBanner,
+              isApproved ? styles.verdictBannerApproved : styles.verdictBannerRejected,
+            ]}>
+            <View style={styles.verdictTopRow}>
+              <View style={styles.verdictBadgeRow}>
+                <Ionicons
+                  name={isApproved ? 'checkmark-circle' : 'close-circle'}
+                  size={34}
+                  color={isApproved ? PsychoPalette.mint : PsychoPalette.redSignalBright}
+                />
+                <View style={styles.verdictTitleCol}>
+                  <Text style={styles.verdictSubLabel}>
+                    {completedCount === 4
+                      ? 'DICTAMEN FINAL DE EVALUACIÓN (4/4 PRUEBAS)'
+                      : `RESULTADO ACUMULADO (${completedCount}/4 PRUEBAS REALIZADAS)`}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.verdictMainSign,
+                      { color: isApproved ? PsychoPalette.mint : PsychoPalette.redSignalBright },
+                    ]}>
+                    {isApproved ? '¡APROBADO!' : 'DESAPROBADO'}
+                  </Text>
+                </View>
+              </View>
+
+              <View
+                style={[
+                  styles.verdictScoreBox,
+                  {
+                    borderColor: isApproved ? PsychoPalette.mint : PsychoPalette.redSignalBright,
+                    backgroundColor: isApproved ? PsychoPalette.mintDim : PsychoPalette.redSignalDim,
+                  },
+                ]}>
+                <Text style={styles.verdictScoreLabel}>PUNTAJE GLOBAL</Text>
+                <Text
+                  style={[
+                    styles.verdictScoreValue,
+                    { color: isApproved ? PsychoPalette.mint : PsychoPalette.redSignalBright },
+                  ]}>
+                  {averageScorePct}%
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.verdictExplanation}>
+              {isApproved
+                ? completedCount === 4
+                  ? 'El aspirante superó satisfactoriamente todos los módulos psicotécnicos, preoperacionales y de maniobras 3D dentro de los baremos oficiales.'
+                  : `Promedio actual aprobatorio (${averageScorePct}%). Complete los ${4 - completedCount} módulos restantes para emitir el certificado definitivo.`
+                : failedModules.length > 0
+                  ? `No alcanzó el puntaje mínimo requerido en: ${failedModules.map((m) => m.label).join(', ')}. Repita las pruebas con estado NO APTO.`
+                  : `El promedio general (${averageScorePct}%) es inferior al mínimo requerido (75%).`}
+            </Text>
+
+            <View style={styles.verdictBreakdownGrid}>
+              {moduleEvaluations.map((mod) => {
+                const badge = getGradeBadgeStyle(mod.grade);
+                return (
+                  <View
+                    key={mod.id}
+                    style={[
+                      styles.verdictModChip,
+                      { backgroundColor: badge.bg, borderColor: badge.border },
+                    ]}>
+                    <Text style={styles.verdictModName}>{mod.label}</Text>
+                    <Text style={[styles.verdictModGrade, { color: badge.text }]}>
+                      {mod.done ? `${mod.grade} (${mod.metricText})` : 'PENDIENTE'}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
 
         {/* SECCIÓN DE LAS 4 TARJETAS VISUALES DE GRAN TAMAÑO */}
         <View style={styles.sectionHeaderRow}>
@@ -671,6 +815,11 @@ export default function DashboardScreen() {
               </View>
             ))}
           </View>
+        </View>
+
+        <View style={styles.authorFooterWrap}>
+          <Ionicons name="code-slash-outline" size={14} color={PsychoPalette.cyan} />
+          <Text style={styles.authorFooterText}>by sergiDM-0</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -1354,5 +1503,113 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontFamily: Fonts.mono,
     marginTop: 2,
+  },
+  authorFooterWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingTop: 6,
+    paddingBottom: 4,
+  },
+  authorFooterText: {
+    color: PsychoPalette.cyan,
+    fontSize: 12,
+    fontWeight: '800',
+    fontFamily: Fonts.mono,
+    letterSpacing: 1,
+  },
+  verdictBanner: {
+    borderRadius: 16,
+    borderWidth: 2,
+    padding: 16,
+    gap: 12,
+  },
+  verdictBannerApproved: {
+    backgroundColor: 'rgba(0, 245, 160, 0.1)',
+    borderColor: PsychoPalette.mint,
+  },
+  verdictBannerRejected: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderColor: PsychoPalette.redSignalBright,
+  },
+  verdictTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  verdictBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  verdictTitleCol: {
+    flex: 1,
+    gap: 2,
+  },
+  verdictSubLabel: {
+    color: PsychoPalette.textSecondary,
+    fontSize: 10,
+    fontWeight: '800',
+    fontFamily: Fonts.mono,
+    letterSpacing: 0.6,
+  },
+  verdictMainSign: {
+    fontSize: 26,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+    letterSpacing: 1.2,
+  },
+  verdictScoreBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  verdictScoreLabel: {
+    color: PsychoPalette.textSecondary,
+    fontSize: 9,
+    fontWeight: '800',
+    fontFamily: Fonts.mono,
+    letterSpacing: 0.5,
+  },
+  verdictScoreValue: {
+    fontSize: 20,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
+  },
+  verdictExplanation: {
+    color: PsychoPalette.textPrimary,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  verdictBreakdownGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  verdictModChip: {
+    flex: 1,
+    minWidth: 135,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 2,
+  },
+  verdictModName: {
+    color: PsychoPalette.textSecondary,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  verdictModGrade: {
+    fontSize: 11,
+    fontWeight: '900',
+    fontFamily: Fonts.mono,
   },
 });
